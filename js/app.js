@@ -566,5 +566,10 @@ function updateReviewTextDirection() {
     }
 }
 
+// ===== Expose functions for inline onclick handlers =====
+window.openModal = openModal;
+window.deleteReview = deleteReview;
+window.copyShareLink = copyShareLink;
+
 // ===== Init =====
 handleRoute();
