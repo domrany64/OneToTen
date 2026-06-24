@@ -80,6 +80,8 @@ let allReviews = {};
 let currentView = 'all';
 let searchQuery = '';
 let sortBy = 'dateReviewed';
+let filterScore = '';  // '', '1-3', '4-5', '6-7', '8-9', '10'
+let filterTag = '';
 
 // ===== DOM Elements =====
 const mainContent = document.getElementById('mainContent');
@@ -178,13 +180,30 @@ function renderReviewList() {
         reviews = reviews.filter(r => r.type === filterType);
     }
 
-    // Filter by search
+    // Filter by search (title, tags, meta values)
     if (searchQuery) {
         const q = searchQuery.toLowerCase();
         reviews = reviews.filter(r =>
             r.title.toLowerCase().includes(q) ||
-            (r.tags && r.tags.some(t => t.toLowerCase().includes(q)))
+            (r.tags && r.tags.some(t => t.toLowerCase().includes(q))) ||
+            (r.meta && Object.values(r.meta).some(v => String(v).toLowerCase().includes(q)))
         );
+    }
+
+    // Filter by score range
+    if (filterScore) {
+        if (filterScore === '10') {
+            reviews = reviews.filter(r => r.score === 10);
+        } else {
+            const [min, max] = filterScore.split('-').map(Number);
+            reviews = reviews.filter(r => r.score >= min && r.score <= max);
+        }
+    }
+
+    // Filter by tag
+    if (filterTag) {
+        const ft = filterTag.toLowerCase();
+        reviews = reviews.filter(r => r.tags && r.tags.some(t => t.toLowerCase() === ft));
     }
 
     // Sort
@@ -195,6 +214,12 @@ function renderReviewList() {
             case 'dateConsumed': return (b.dateConsumed || '').localeCompare(a.dateConsumed || '');
             default: return (b.createdAt || 0) - (a.createdAt || 0);
         }
+    });
+
+    // Collect all tags for filter dropdown
+    const allTags = new Set();
+    Object.values(allReviews).forEach(r => {
+        if (r.tags) r.tags.forEach(t => allTags.add(t));
     });
 
     const typeName = currentView === 'all' ? 'All Reviews' :
@@ -215,6 +240,22 @@ function renderReviewList() {
                 </select>
             </div>
         </div>
+        <div class="reviews-filters">
+            <select class="sort-select" id="filterScoreSelect">
+                <option value="">All Scores</option>
+                <option value="10" ${filterScore === '10' ? 'selected' : ''}>10 ⭐</option>
+                <option value="8-9" ${filterScore === '8-9' ? 'selected' : ''}>8–9</option>
+                <option value="6-7" ${filterScore === '6-7' ? 'selected' : ''}>6–7</option>
+                <option value="4-5" ${filterScore === '4-5' ? 'selected' : ''}>4–5</option>
+                <option value="1-3" ${filterScore === '1-3' ? 'selected' : ''}>1–3</option>
+            </select>
+            ${allTags.size > 0 ? `
+                <select class="sort-select" id="filterTagSelect">
+                    <option value="">All Tags</option>
+                    ${[...allTags].sort().map(t => `<option value="${escapeHtml(t)}" ${filterTag === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+                </select>
+            ` : ''}
+        </div>
         ${reviews.length === 0 ? renderEmptyState() : `
             <div class="review-grid">
                 ${reviews.map(renderCard).join('')}
@@ -231,6 +272,17 @@ function renderReviewList() {
         sortBy = e.target.value;
         renderReviewList();
     });
+    document.getElementById('filterScoreSelect').addEventListener('change', (e) => {
+        filterScore = e.target.value;
+        renderReviewList();
+    });
+    const tagSelect = document.getElementById('filterTagSelect');
+    if (tagSelect) {
+        tagSelect.addEventListener('change', (e) => {
+            filterTag = e.target.value;
+            renderReviewList();
+        });
+    }
 
     // Card click handlers
     document.querySelectorAll('.review-card').forEach(card => {
@@ -369,33 +421,35 @@ function renderSingleReview(id) {
 // ===== Type-Specific Fields =====
 const TYPE_FIELDS = {
     movie: [
-        { id: 'director', label: 'Director', type: 'text' },
+        { id: 'director', label: 'Director(s)', type: 'text' },
+        { id: 'actors', label: 'Actor(s)', type: 'text' },
         { id: 'year', label: 'Year', type: 'number' },
         { id: 'studio', label: 'Studio / Company', type: 'text' }
     ],
     tvshow: [
-        { id: 'creator', label: 'Creator', type: 'text' },
+        { id: 'creator', label: 'Creator(s)', type: 'text' },
+        { id: 'actors', label: 'Actor(s)', type: 'text' },
         { id: 'year', label: 'Year', type: 'number' },
         { id: 'network', label: 'Network / Platform', type: 'text' },
         { id: 'seasons', label: 'Seasons', type: 'number' },
         { id: 'episodes', label: 'Episodes', type: 'number' }
     ],
     videogame: [
-        { id: 'developer', label: 'Developer', type: 'text' },
+        { id: 'developer', label: 'Developer(s)', type: 'text' },
         { id: 'year', label: 'Year', type: 'number' },
-        { id: 'platform', label: 'Platform', type: 'text' }
+        { id: 'platform', label: 'Platform(s)', type: 'text' }
     ],
     boardgame: [
-        { id: 'designer', label: 'Designer', type: 'text' },
+        { id: 'designer', label: 'Designer(s)', type: 'text' },
         { id: 'year', label: 'Year', type: 'number' },
         { id: 'playerCount', label: 'Player Count', type: 'text' }
     ],
     book: [
-        { id: 'author', label: 'Author', type: 'text' },
+        { id: 'author', label: 'Author(s)', type: 'text' },
         { id: 'year', label: 'Year', type: 'number' },
-        { id: 'translator', label: 'Translator (if any)', type: 'text' },
+        { id: 'translator', label: 'Translator(s)', type: 'text' },
         { id: 'format', label: 'Format', type: 'select', options: ['Physical', 'eBook', 'Audiobook'] },
-        { id: 'narrator', label: 'Narrator / Reader', type: 'text' },
+        { id: 'narrator', label: 'Narrator(s)', type: 'text' },
         { id: 'publisher', label: 'Audiobook Publisher', type: 'text' }
     ]
 };
@@ -664,7 +718,7 @@ function formatStatus(status) {
 
 function formatMetaLabel(key) {
     const labels = {
-        director: 'Director', creator: 'Creator', year: 'Year',
+        director: 'Director', creator: 'Creator', actors: 'Actors', year: 'Year',
         studio: 'Studio', network: 'Network', seasons: 'Seasons', episodes: 'Episodes',
         developer: 'Developer', platform: 'Platform',
         designer: 'Designer', playerCount: 'Players',
