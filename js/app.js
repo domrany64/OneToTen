@@ -200,7 +200,7 @@ function getCreatorLabel() {
         case 'book':
             return 'Author / Narrator';
         default:
-            return 'Creator';
+            return null; // hide on All page
     }
 }
 
@@ -597,7 +597,17 @@ function renderSingleReview(id) {
                 <div class="review-detail-section">
                     <h3>Details</h3>
                     <div class="review-detail-meta-list">
-                        ${Object.entries(review.meta).map(([key, val]) => `<span class="meta-item"><strong>${formatMetaLabel(key)}:</strong> ${escapeHtml(val)}</span>`).join('')}
+                        ${Object.entries(review.meta).map(([key, val]) => {
+                            if (key === 'year') {
+                                const yearNum = parseInt(val);
+                                const calType = yearNum && isJalaliYear(yearNum) ? '☀️ شمسی' : '📅 AD';
+                                const converted = yearNum ? (isJalaliYear(yearNum)
+                                    ? `${jalaliToGregorian(yearNum)} AD`
+                                    : `${gregorianToJalali(yearNum)} شمسی`) : '';
+                                return `<span class="meta-item"><strong>${formatMetaLabel(key)}:</strong> ${escapeHtml(val)} <span class="year-cal-badge">${calType}</span>${converted ? ` <span class="year-converted">(${converted})</span>` : ''}</span>`;
+                            }
+                            return `<span class="meta-item"><strong>${formatMetaLabel(key)}:</strong> ${escapeHtml(val)}</span>`;
+                        }).join('')}
                     </div>
                 </div>
             ` : ''}
@@ -692,10 +702,14 @@ function renderTypeFields(type, data = {}) {
                 </div>`;
             }
             if (f.id === 'year') {
+                const yearVal = data[f.id] || '';
+                const yearNum = parseInt(yearVal);
+                const calLabel = yearNum ? (isJalaliYear(yearNum) ? '☀️ شمسی' : '📅 AD') : '';
                 return `<div class="form-group">
                     <label for="field_${f.id}">${f.label}</label>
                     <div class="year-input-wrapper">
-                        <input type="number" id="field_${f.id}" value="${escapeHtml(data[f.id] || '')}" placeholder="e.g. 2024 or 1403">
+                        <input type="number" id="field_${f.id}" value="${escapeHtml(yearVal)}" placeholder="e.g. 2024 or 1403">
+                        <span class="year-cal-label" id="yearCalLabel_${f.id}">${calLabel}</span>
                         <button type="button" class="btn btn-secondary btn-sm year-toggle" onclick="toggleYearCalendar('field_${f.id}')" title="Convert Shamsi ↔ Gregorian">🔄</button>
                     </div>
                 </div>`;
@@ -706,6 +720,12 @@ function renderTypeFields(type, data = {}) {
             </div>`;
         }).join('')}
     </div>`;
+
+    // Attach year input listener for live calendar label update
+    const yearInput = document.getElementById('field_year');
+    if (yearInput) {
+        yearInput.addEventListener('input', () => updateYearCalLabel('field_year'));
+    }
 }
 
 function getTypeFieldValues(type) {
@@ -798,6 +818,16 @@ function toggleYearCalendar(fieldId) {
         input.value = jalali;
         showToast(`Converted: ${val} AD → ${jalali} شمسی`);
     }
+    updateYearCalLabel(fieldId);
+}
+
+function updateYearCalLabel(fieldId) {
+    const input = document.getElementById(fieldId);
+    const label = document.getElementById(`yearCalLabel_${fieldId.replace('field_', '')}`);
+    if (!label) return;
+    const val = parseInt(input.value);
+    if (!val) { label.textContent = ''; return; }
+    label.textContent = isJalaliYear(val) ? '☀️ شمسی' : '📅 AD';
 }
 
 function openModal(editId = null) {
@@ -970,9 +1000,7 @@ function showToast(message) {
 addReviewBtn.addEventListener('click', () => openModal());
 modalClose.addEventListener('click', closeModal);
 cancelBtn.addEventListener('click', closeModal);
-modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) closeModal();
-});
+// Clicking outside the modal no longer closes it to prevent accidental data loss
 
 scoreSlider.addEventListener('input', () => {
     scoreDisplay.textContent = scoreSlider.value;
