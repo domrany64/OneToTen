@@ -80,8 +80,10 @@ let allReviews = {};
 let currentView = 'all';
 let searchQuery = '';
 let sortBy = 'dateReviewed';
-let filterScore = '';  // '', '1-3', '4-5', '6-7', '8-9', '10'
+let filterScore = '';
 let filterTag = '';
+let filterStatus = '';
+let filterAuthor = '';
 
 // ===== DOM Elements =====
 const mainContent = document.getElementById('mainContent');
@@ -206,61 +208,123 @@ function renderReviewList() {
         reviews = reviews.filter(r => r.tags && r.tags.some(t => t.toLowerCase() === ft));
     }
 
+    // Filter by status
+    if (filterStatus) {
+        reviews = reviews.filter(r => r.status === filterStatus);
+    }
+
+    // Filter by author/creator/director
+    if (filterAuthor) {
+        const fa = filterAuthor.toLowerCase();
+        reviews = reviews.filter(r => {
+            if (!r.meta) return false;
+            const creatorFields = ['author', 'director', 'creator', 'designer', 'developer', 'actors', 'narrator'];
+            return creatorFields.some(field => r.meta[field] && r.meta[field].toLowerCase().includes(fa));
+        });
+    }
+
     // Sort
     reviews.sort((a, b) => {
         switch (sortBy) {
             case 'score': return (b.score || 0) - (a.score || 0);
+            case 'scoreLow': return (a.score || 0) - (b.score || 0);
             case 'title': return (a.title || '').localeCompare(b.title || '');
             case 'dateConsumed': return (b.dateConsumed || '').localeCompare(a.dateConsumed || '');
             default: return (b.createdAt || 0) - (a.createdAt || 0);
         }
     });
 
-    // Collect all tags for filter dropdown
+    // Collect all tags and creators for filter dropdowns
     const allTags = new Set();
+    const allCreators = new Set();
     Object.values(allReviews).forEach(r => {
         if (r.tags) r.tags.forEach(t => allTags.add(t));
+        if (r.meta) {
+            ['author', 'director', 'creator', 'designer', 'developer', 'actors', 'narrator'].forEach(field => {
+                if (r.meta[field]) {
+                    r.meta[field].split(',').forEach(v => {
+                        const trimmed = v.trim();
+                        if (trimmed) allCreators.add(trimmed);
+                    });
+                }
+            });
+        }
     });
 
     const typeName = currentView === 'all' ? 'All Reviews' :
         TYPE_CONFIG[currentView]?.label + 's' ||
         currentView.charAt(0).toUpperCase() + currentView.slice(1);
 
+    const hasActiveFilters = filterScore || filterTag || filterStatus || filterAuthor;
+
     mainContent.innerHTML = `
-        <div class="reviews-header">
-            <h1>${typeName} (${reviews.length})</h1>
-            <div class="reviews-controls">
-                <input type="text" class="search-input" id="searchInput" 
-                    placeholder="Search..." value="${escapeHtml(searchQuery)}">
-                <select class="sort-select" id="sortSelect">
-                    <option value="dateReviewed" ${sortBy === 'dateReviewed' ? 'selected' : ''}>Newest</option>
-                    <option value="score" ${sortBy === 'score' ? 'selected' : ''}>Score</option>
-                    <option value="title" ${sortBy === 'title' ? 'selected' : ''}>Title</option>
-                    <option value="dateConsumed" ${sortBy === 'dateConsumed' ? 'selected' : ''}>Date Consumed</option>
-                </select>
+        <div class="list-layout">
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3>Sort</h3>
+                    <select class="sidebar-select" id="sortSelect">
+                        <option value="dateReviewed" ${sortBy === 'dateReviewed' ? 'selected' : ''}>Newest First</option>
+                        <option value="score" ${sortBy === 'score' ? 'selected' : ''}>Highest Score</option>
+                        <option value="scoreLow" ${sortBy === 'scoreLow' ? 'selected' : ''}>Lowest Score</option>
+                        <option value="title" ${sortBy === 'title' ? 'selected' : ''}>Title A–Z</option>
+                        <option value="dateConsumed" ${sortBy === 'dateConsumed' ? 'selected' : ''}>Date Consumed</option>
+                    </select>
+                </div>
+                <div class="sidebar-section">
+                    <h3>Score</h3>
+                    <select class="sidebar-select" id="filterScoreSelect">
+                        <option value="">All</option>
+                        <option value="10" ${filterScore === '10' ? 'selected' : ''}>10 ⭐</option>
+                        <option value="8-9" ${filterScore === '8-9' ? 'selected' : ''}>8–9</option>
+                        <option value="6-7" ${filterScore === '6-7' ? 'selected' : ''}>6–7</option>
+                        <option value="4-5" ${filterScore === '4-5' ? 'selected' : ''}>4–5</option>
+                        <option value="1-3" ${filterScore === '1-3' ? 'selected' : ''}>1–3</option>
+                    </select>
+                </div>
+                <div class="sidebar-section">
+                    <h3>Status</h3>
+                    <select class="sidebar-select" id="filterStatusSelect">
+                        <option value="">All</option>
+                        <option value="completed" ${filterStatus === 'completed' ? 'selected' : ''}>Completed</option>
+                        <option value="in-progress" ${filterStatus === 'in-progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="dropped" ${filterStatus === 'dropped' ? 'selected' : ''}>Dropped</option>
+                    </select>
+                </div>
+                ${allTags.size > 0 ? `
+                    <div class="sidebar-section">
+                        <h3>Tag</h3>
+                        <select class="sidebar-select" id="filterTagSelect">
+                            <option value="">All</option>
+                            ${[...allTags].sort().map(t => `<option value="${escapeHtml(t)}" ${filterTag === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+                        </select>
+                    </div>
+                ` : ''}
+                ${allCreators.size > 0 ? `
+                    <div class="sidebar-section">
+                        <h3>Creator / Author</h3>
+                        <select class="sidebar-select" id="filterAuthorSelect">
+                            <option value="">All</option>
+                            ${[...allCreators].sort().map(c => `<option value="${escapeHtml(c)}" ${filterAuthor === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+                        </select>
+                    </div>
+                ` : ''}
+                ${hasActiveFilters ? `
+                    <button class="btn btn-secondary btn-sm" id="clearFiltersBtn" style="margin-top: 0.75rem; width: 100%;">Clear Filters</button>
+                ` : ''}
+            </aside>
+            <div class="list-content">
+                <div class="reviews-header">
+                    <h1>${typeName} (${reviews.length})</h1>
+                    <input type="text" class="search-input" id="searchInput" 
+                        placeholder="Search title, author, tag..." value="${escapeHtml(searchQuery)}">
+                </div>
+                ${reviews.length === 0 ? renderEmptyState() : `
+                    <div class="review-grid">
+                        ${reviews.map(renderCard).join('')}
+                    </div>
+                `}
             </div>
         </div>
-        <div class="reviews-filters">
-            <select class="sort-select" id="filterScoreSelect">
-                <option value="">All Scores</option>
-                <option value="10" ${filterScore === '10' ? 'selected' : ''}>10 ⭐</option>
-                <option value="8-9" ${filterScore === '8-9' ? 'selected' : ''}>8–9</option>
-                <option value="6-7" ${filterScore === '6-7' ? 'selected' : ''}>6–7</option>
-                <option value="4-5" ${filterScore === '4-5' ? 'selected' : ''}>4–5</option>
-                <option value="1-3" ${filterScore === '1-3' ? 'selected' : ''}>1–3</option>
-            </select>
-            ${allTags.size > 0 ? `
-                <select class="sort-select" id="filterTagSelect">
-                    <option value="">All Tags</option>
-                    ${[...allTags].sort().map(t => `<option value="${escapeHtml(t)}" ${filterTag === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
-                </select>
-            ` : ''}
-        </div>
-        ${reviews.length === 0 ? renderEmptyState() : `
-            <div class="review-grid">
-                ${reviews.map(renderCard).join('')}
-            </div>
-        `}
     `;
 
     // Attach event listeners
@@ -276,10 +340,31 @@ function renderReviewList() {
         filterScore = e.target.value;
         renderReviewList();
     });
+    document.getElementById('filterStatusSelect').addEventListener('change', (e) => {
+        filterStatus = e.target.value;
+        renderReviewList();
+    });
     const tagSelect = document.getElementById('filterTagSelect');
     if (tagSelect) {
         tagSelect.addEventListener('change', (e) => {
             filterTag = e.target.value;
+            renderReviewList();
+        });
+    }
+    const authorSelect = document.getElementById('filterAuthorSelect');
+    if (authorSelect) {
+        authorSelect.addEventListener('change', (e) => {
+            filterAuthor = e.target.value;
+            renderReviewList();
+        });
+    }
+    const clearBtn = document.getElementById('clearFiltersBtn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            filterScore = '';
+            filterTag = '';
+            filterStatus = '';
+            filterAuthor = '';
             renderReviewList();
         });
     }
