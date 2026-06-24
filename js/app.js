@@ -752,7 +752,9 @@ function addLinkRow(url = '', source = '') {
     const row = document.createElement('div');
     row.className = 'link-row';
     row.dataset.idx = idx;
+    row.draggable = true;
     row.innerHTML = `
+        <span class="link-drag-handle" title="Drag to reorder">⠿</span>
         <input type="url" class="link-url" placeholder="https://..." value="${escapeHtml(url)}">
         <select class="link-source">
             <option value="">Auto-detect</option>
@@ -762,11 +764,64 @@ function addLinkRow(url = '', source = '') {
     `;
     container.appendChild(row);
     if (source) row.querySelector('.link-source').value = source;
+    setupLinkDrag(row);
 }
 
 function removeLinkRow(idx) {
     const row = document.querySelector(`.link-row[data-idx="${idx}"]`);
     if (row) row.remove();
+}
+
+let draggedLinkRow = null;
+
+function setupLinkDrag(row) {
+    const handle = row.querySelector('.link-drag-handle');
+
+    // Only start drag from the handle
+    handle.addEventListener('mousedown', () => { row.draggable = true; });
+    row.addEventListener('mousedown', (e) => {
+        if (!e.target.classList.contains('link-drag-handle')) row.draggable = false;
+    });
+
+    row.addEventListener('dragstart', (e) => {
+        draggedLinkRow = row;
+        row.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    });
+
+    row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        draggedLinkRow = null;
+        document.querySelectorAll('.link-row.drag-over').forEach(r => r.classList.remove('drag-over'));
+    });
+
+    row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (draggedLinkRow && draggedLinkRow !== row) {
+            e.dataTransfer.dropEffect = 'move';
+            row.classList.add('drag-over');
+        }
+    });
+
+    row.addEventListener('dragleave', () => {
+        row.classList.remove('drag-over');
+    });
+
+    row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        row.classList.remove('drag-over');
+        if (draggedLinkRow && draggedLinkRow !== row) {
+            const container = document.getElementById('externalLinksContainer');
+            const rows = [...container.querySelectorAll('.link-row')];
+            const fromIdx = rows.indexOf(draggedLinkRow);
+            const toIdx = rows.indexOf(row);
+            if (fromIdx < toIdx) {
+                row.after(draggedLinkRow);
+            } else {
+                row.before(draggedLinkRow);
+            }
+        }
+    });
 }
 
 function getExternalLinks() {

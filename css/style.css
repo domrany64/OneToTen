@@ -565,6 +565,33 @@ body {
     gap: 0.5rem;
     align-items: center;
     margin-bottom: 0.5rem;
+    transition: opacity 0.2s;
+}
+
+.link-row[draggable="true"] {
+    cursor: default;
+}
+
+.link-row.dragging {
+    opacity: 0.4;
+}
+
+.link-row.drag-over {
+    border-top: 2px solid var(--primary);
+    margin-top: -2px;
+}
+
+.link-drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    padding: 0 0.25rem;
+    user-select: none;
+    line-height: 1;
+}
+
+.link-drag-handle:active {
+    cursor: grabbing;
 }
 
 .link-row .link-url {
