@@ -14,7 +14,10 @@
     <header class="header">
         <div class="header-inner">
             <a href="#/" class="logo">🎯 OneToTen</a>
-            <button class="btn btn-primary" id="addReviewBtn">+ Add Review</button>
+            <div class="header-actions">
+                <button class="btn btn-primary" id="addReviewBtn" style="display:none">+ Add Review</button>
+                <button class="btn btn-secondary btn-sm" id="authBtn">Login</button>
+            </div>
         </div>
         <nav class="nav-tabs" id="navTabs">
             <a href="#/all" class="nav-tab active" data-type="all">All</a>
@@ -131,6 +134,30 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Review</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div class="modal-overlay" id="loginOverlay">
+        <div class="modal" style="max-width: 380px;">
+            <div class="modal-header">
+                <h2>Login</h2>
+                <button class="modal-close" onclick="hideLoginModal()">&times;</button>
+            </div>
+            <form class="review-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" required placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" required placeholder="Password">
+                </div>
+                <div class="login-error" id="loginError"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Login</button>
                 </div>
             </form>
         </div>

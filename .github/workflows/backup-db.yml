@@ -1,0 +1,34 @@
+name: Backup Firebase DB
+
+on:
+  schedule:
+    # Runs every Sunday at 3:00 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download database backup
+        run: |
+          mkdir -p backups
+          curl -s "https://one-to-ten-92b88-default-rtdb.firebaseio.com/.json" | python3 -m json.tool > "backups/backup_$(date +%Y%m%d_%H%M%S).json"
+
+      - name: Remove old backups (keep last 10)
+        run: |
+          cd backups
+          ls -t *.json | tail -n +11 | xargs -r rm
+
+      - name: Commit and push backup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backups/
+          git diff --cached --quiet || git commit -m "Automated DB backup $(date +%Y-%m-%d)"
+          git push

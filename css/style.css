@@ -57,6 +57,19 @@ body {
     justify-content: space-between;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.login-error {
+    color: #ef4444;
+    font-size: 0.8rem;
+    min-height: 1.2em;
+    margin-top: 0.5rem;
+}
+
 .logo {
     font-size: 1.5rem;
     font-weight: 700;
@@ -449,6 +462,18 @@ body {
 
 .type-fields-row {
     flex-wrap: wrap;
+}
+
+.type-fields-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+@media (max-width: 640px) {
+    .type-fields-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* ===== Modal ===== */

@@ -1,6 +1,7 @@
 // ===== Firebase Config =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
 import { getDatabase, ref, push, set, update, remove, onValue } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyB9xbxS4TTADWrs1oxT5ZbImiK0rtOgHpc",
@@ -16,7 +17,63 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const auth = getAuth(app);
 const reviewsRef = ref(db, 'reviews');
+
+// ===== Auth State =====
+let currentUser = null;
+
+onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    updateAuthUI();
+    handleRoute(); // re-render to show/hide edit buttons
+});
+
+function updateAuthUI() {
+    const addBtn = document.getElementById('addReviewBtn');
+    const authBtn = document.getElementById('authBtn');
+    if (currentUser) {
+        addBtn.style.display = '';
+        authBtn.textContent = 'Logout';
+        authBtn.onclick = () => signOut(auth);
+    } else {
+        addBtn.style.display = 'none';
+        authBtn.textContent = 'Login';
+        authBtn.onclick = showLoginModal;
+    }
+}
+
+function showLoginModal() {
+    const overlay = document.getElementById('loginOverlay');
+    overlay.classList.add('active');
+}
+
+function hideLoginModal() {
+    const overlay = document.getElementById('loginOverlay');
+    overlay.classList.remove('active');
+    document.getElementById('loginError').textContent = '';
+}
+
+function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const errorEl = document.getElementById('loginError');
+    errorEl.textContent = '';
+
+    signInWithEmailAndPassword(auth, email, password)
+        .then(() => {
+            hideLoginModal();
+            showToast('Logged in!');
+        })
+        .catch((err) => {
+            errorEl.textContent = 'Invalid email or password';
+        });
+}
+
+function isLoggedIn() {
+    return currentUser !== null;
+}
 
 // ===== State =====
 let allReviews = {};
@@ -289,8 +346,10 @@ function renderSingleReview(id) {
 
             <div class="review-detail-actions">
                 <button class="btn btn-secondary" onclick="copyShareLink('${id}')">📋 Copy Link</button>
-                <button class="btn btn-primary" onclick="openModal('${id}')">✏️ Edit</button>
-                <button class="btn btn-danger" onclick="deleteReview('${id}')">🗑️ Delete</button>
+                ${isLoggedIn() ? `
+                    <button class="btn btn-primary" onclick="openModal('${id}')">✏️ Edit</button>
+                    <button class="btn btn-danger" onclick="deleteReview('${id}')">🗑️ Delete</button>
+                ` : ''}
             </div>
         </div>
     `;
@@ -338,7 +397,7 @@ function renderTypeFields(type, data = {}) {
         container.innerHTML = '';
         return;
     }
-    container.innerHTML = `<div class="form-row type-fields-row">
+    container.innerHTML = `<div class="type-fields-grid">
         ${fields.map(f => {
             if (f.type === 'select') {
                 return `<div class="form-group">
@@ -573,6 +632,8 @@ function updateReviewTextDirection() {
 window.openModal = openModal;
 window.deleteReview = deleteReview;
 window.copyShareLink = copyShareLink;
+window.handleLogin = handleLogin;
+window.hideLoginModal = hideLoginModal;
 
 // ===== Init =====
 handleRoute();
