@@ -83,7 +83,9 @@ let sortBy = 'dateReviewed';
 let filterScore = '';
 let filterTag = '';
 let filterStatus = '';
-let filterAuthor = '';
+let filterCreator = '';
+let filterYearFrom = '';
+let filterYearTo = '';
 
 // ===== DOM Elements =====
 const mainContent = document.getElementById('mainContent');
@@ -165,6 +167,105 @@ onValue(reviewsRef, (snapshot) => {
     handleRoute();
 });
 
+// ===== Creator Filter Helpers =====
+function getCreatorFieldsForView() {
+    const typeMap = { movies: 'movie', tvshows: 'tvshow', videogames: 'videogame', boardgames: 'boardgame', books: 'book' };
+    const view = typeMap[currentView] || currentView;
+    switch (view) {
+        case 'movie':
+        case 'tvshow':
+            return ['director', 'creator', 'actors'];
+        case 'videogame':
+            return ['developer'];
+        case 'boardgame':
+            return ['designer'];
+        case 'book':
+            return ['author', 'narrator'];
+        default: // 'all'
+            return ['author', 'narrator', 'director', 'creator', 'actors', 'designer', 'developer'];
+    }
+}
+
+function getCreatorLabel() {
+    const typeMap = { movies: 'movie', tvshows: 'tvshow', videogames: 'videogame', boardgames: 'boardgame', books: 'book' };
+    const view = typeMap[currentView] || currentView;
+    switch (view) {
+        case 'movie':
+        case 'tvshow':
+            return 'Director / Actor';
+        case 'videogame':
+            return 'Developer';
+        case 'boardgame':
+            return 'Designer';
+        case 'book':
+            return 'Author / Narrator';
+        default:
+            return 'Creator';
+    }
+}
+
+function shouldShowReviewInCreatorList(r) {
+    const typeMap = { movies: 'movie', tvshows: 'tvshow', videogames: 'videogame', boardgames: 'boardgame', books: 'book' };
+    const view = typeMap[currentView] || currentView;
+    if (view === 'all') return true;
+    return r.type === view;
+}
+
+// ===== Combobox Helper =====
+function setupCombobox(inputId, dropdownId, options, onSelect) {
+    const input = document.getElementById(inputId);
+    const dropdown = document.getElementById(dropdownId);
+    if (!input || !dropdown) return;
+
+    function showDropdown(filter) {
+        const query = filter.toLowerCase();
+        const filtered = query
+            ? options.filter(o => o.toLowerCase().includes(query))
+            : options;
+        if (filtered.length === 0) {
+            dropdown.innerHTML = '';
+            dropdown.classList.remove('open');
+            return;
+        }
+        dropdown.innerHTML = filtered.map(o =>
+            `<div class="combobox-option" data-value="${escapeHtml(o)}">${escapeHtml(o)}</div>`
+        ).join('');
+        dropdown.classList.add('open');
+
+        dropdown.querySelectorAll('.combobox-option').forEach(opt => {
+            opt.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                input.value = opt.dataset.value;
+                dropdown.classList.remove('open');
+                onSelect(opt.dataset.value);
+            });
+        });
+    }
+
+    input.addEventListener('focus', () => showDropdown(input.value));
+    input.addEventListener('input', () => showDropdown(input.value));
+    input.addEventListener('blur', () => {
+        setTimeout(() => dropdown.classList.remove('open'), 150);
+    });
+
+    // Allow clearing by emptying the field
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            dropdown.classList.remove('open');
+            onSelect(input.value);
+        }
+        if (e.key === 'Escape') {
+            dropdown.classList.remove('open');
+            input.blur();
+        }
+    });
+    // Clear filter if input is cleared
+    input.addEventListener('change', () => {
+        if (!input.value) onSelect('');
+    });
+}
+
 // ===== Render: Review List =====
 function renderReviewList() {
     let reviews = Object.entries(allReviews).map(([id, data]) => ({ id, ...data }));
@@ -213,14 +314,22 @@ function renderReviewList() {
         reviews = reviews.filter(r => r.status === filterStatus);
     }
 
-    // Filter by author/creator/director
-    if (filterAuthor) {
-        const fa = filterAuthor.toLowerCase();
+    // Filter by creator (context-specific)
+    if (filterCreator) {
+        const fc = filterCreator.toLowerCase();
         reviews = reviews.filter(r => {
             if (!r.meta) return false;
-            const creatorFields = ['author', 'director', 'creator', 'designer', 'developer', 'actors', 'narrator'];
-            return creatorFields.some(field => r.meta[field] && r.meta[field].toLowerCase().includes(fa));
+            const fields = getCreatorFieldsForView();
+            return fields.some(field => r.meta[field] && r.meta[field].toLowerCase().includes(fc));
         });
+    }
+
+    // Filter by year range
+    if (filterYearFrom) {
+        reviews = reviews.filter(r => r.meta && r.meta.year && parseInt(r.meta.year) >= parseInt(filterYearFrom));
+    }
+    if (filterYearTo) {
+        reviews = reviews.filter(r => r.meta && r.meta.year && parseInt(r.meta.year) <= parseInt(filterYearTo));
     }
 
     // Sort
@@ -234,13 +343,14 @@ function renderReviewList() {
         }
     });
 
-    // Collect all tags and creators for filter dropdowns
+    // Collect all tags and creators for filter dropdowns (context-specific)
     const allTags = new Set();
     const allCreators = new Set();
+    const creatorFields = getCreatorFieldsForView();
     Object.values(allReviews).forEach(r => {
         if (r.tags) r.tags.forEach(t => allTags.add(t));
-        if (r.meta) {
-            ['author', 'director', 'creator', 'designer', 'developer', 'actors', 'narrator'].forEach(field => {
+        if (r.meta && shouldShowReviewInCreatorList(r)) {
+            creatorFields.forEach(field => {
                 if (r.meta[field]) {
                     r.meta[field].split(',').forEach(v => {
                         const trimmed = v.trim();
@@ -255,7 +365,10 @@ function renderReviewList() {
         TYPE_CONFIG[currentView]?.label + 's' ||
         currentView.charAt(0).toUpperCase() + currentView.slice(1);
 
-    const hasActiveFilters = filterScore || filterTag || filterStatus || filterAuthor;
+    const hasActiveFilters = filterScore || filterTag || filterStatus || filterCreator || filterYearFrom || filterYearTo;
+    const creatorLabel = getCreatorLabel();
+    const tagOptions = [...allTags].sort();
+    const creatorOptions = [...allCreators].sort();
 
     mainContent.innerHTML = `
         <div class="list-layout">
@@ -290,22 +403,30 @@ function renderReviewList() {
                         <option value="dropped" ${filterStatus === 'dropped' ? 'selected' : ''}>Dropped</option>
                     </select>
                 </div>
-                ${allTags.size > 0 ? `
+                <div class="sidebar-section">
+                    <h3>Year</h3>
+                    <div class="sidebar-year-range">
+                        <input type="number" class="sidebar-input" id="filterYearFrom" placeholder="From" value="${filterYearFrom}">
+                        <span class="sidebar-year-sep">–</span>
+                        <input type="number" class="sidebar-input" id="filterYearTo" placeholder="To" value="${filterYearTo}">
+                    </div>
+                </div>
+                ${tagOptions.length > 0 ? `
                     <div class="sidebar-section">
                         <h3>Tag</h3>
-                        <select class="sidebar-select" id="filterTagSelect">
-                            <option value="">All</option>
-                            ${[...allTags].sort().map(t => `<option value="${escapeHtml(t)}" ${filterTag === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
-                        </select>
+                        <div class="combobox" id="tagCombobox">
+                            <input type="text" class="sidebar-input" id="filterTagInput" placeholder="Type to filter..." value="${escapeHtml(filterTag)}" autocomplete="off">
+                            <div class="combobox-dropdown" id="tagDropdown"></div>
+                        </div>
                     </div>
                 ` : ''}
-                ${allCreators.size > 0 ? `
+                ${creatorLabel && creatorOptions.length > 0 ? `
                     <div class="sidebar-section">
-                        <h3>Creator / Author</h3>
-                        <select class="sidebar-select" id="filterAuthorSelect">
-                            <option value="">All</option>
-                            ${[...allCreators].sort().map(c => `<option value="${escapeHtml(c)}" ${filterAuthor === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-                        </select>
+                        <h3>${creatorLabel}</h3>
+                        <div class="combobox" id="creatorCombobox">
+                            <input type="text" class="sidebar-input" id="filterCreatorInput" placeholder="Type to filter..." value="${escapeHtml(filterCreator)}" autocomplete="off">
+                            <div class="combobox-dropdown" id="creatorDropdown"></div>
+                        </div>
                     </div>
                 ` : ''}
                 ${hasActiveFilters ? `
@@ -344,27 +465,40 @@ function renderReviewList() {
         filterStatus = e.target.value;
         renderReviewList();
     });
-    const tagSelect = document.getElementById('filterTagSelect');
-    if (tagSelect) {
-        tagSelect.addEventListener('change', (e) => {
-            filterTag = e.target.value;
-            renderReviewList();
-        });
-    }
-    const authorSelect = document.getElementById('filterAuthorSelect');
-    if (authorSelect) {
-        authorSelect.addEventListener('change', (e) => {
-            filterAuthor = e.target.value;
-            renderReviewList();
-        });
-    }
+
+    // Year range filters
+    const yearFromInput = document.getElementById('filterYearFrom');
+    const yearToInput = document.getElementById('filterYearTo');
+    yearFromInput.addEventListener('change', (e) => {
+        filterYearFrom = e.target.value;
+        renderReviewList();
+    });
+    yearToInput.addEventListener('change', (e) => {
+        filterYearTo = e.target.value;
+        renderReviewList();
+    });
+
+    // Searchable tag combobox
+    setupCombobox('filterTagInput', 'tagDropdown', tagOptions, (val) => {
+        filterTag = val;
+        renderReviewList();
+    });
+
+    // Searchable creator combobox
+    setupCombobox('filterCreatorInput', 'creatorDropdown', creatorOptions, (val) => {
+        filterCreator = val;
+        renderReviewList();
+    });
+
     const clearBtn = document.getElementById('clearFiltersBtn');
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
             filterScore = '';
             filterTag = '';
             filterStatus = '';
-            filterAuthor = '';
+            filterCreator = '';
+            filterYearFrom = '';
+            filterYearTo = '';
             renderReviewList();
         });
     }

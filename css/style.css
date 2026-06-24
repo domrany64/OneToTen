@@ -217,6 +217,68 @@ body {
     font-size: 0.8rem;
 }
 
+.sidebar-input {
+    width: 100%;
+    padding: 0.5rem 0.625rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 0.8rem;
+    box-sizing: border-box;
+}
+
+.sidebar-year-range {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.sidebar-year-range .sidebar-input {
+    width: 50%;
+}
+
+.sidebar-year-sep {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+/* Combobox */
+.combobox {
+    position: relative;
+}
+
+.combobox-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 180px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    z-index: 100;
+}
+
+.combobox-dropdown.open {
+    display: block;
+}
+
+.combobox-option {
+    padding: 0.4rem 0.625rem;
+    font-size: 0.8rem;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.combobox-option:hover {
+    background: var(--primary);
+    color: #fff;
+}
+
 .list-content {
     flex: 1;
     min-width: 0;
