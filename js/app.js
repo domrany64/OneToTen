@@ -600,16 +600,11 @@ function renderSingleReview(id) {
                 <div class="review-detail-section">
                     <h3>Details</h3>
                     <div class="review-detail-meta-list">
-                        ${Object.entries(review.meta).map(([key, val]) => {
+                        ${getOrderedMeta(review).map(({key, val}) => {
                             if (key === 'year') {
-                                const yearNum = parseInt(val);
-                                const calType = yearNum && isJalaliYear(yearNum) ? '☀️ شمسی' : '📅 AD';
-                                const converted = yearNum ? (isJalaliYear(yearNum)
-                                    ? `${jalaliToGregorian(yearNum)} AD`
-                                    : `${gregorianToJalali(yearNum)} شمسی`) : '';
-                                return `<span class="meta-item"><strong>${formatMetaLabel(key)}:</strong> ${escapeHtml(val)} <span class="year-cal-badge">${calType}</span>${converted ? ` <span class="year-converted">(${converted})</span>` : ''}</span>`;
+                                return `<div class="meta-item">${formatYearDisplay(val)}</div>`;
                             }
-                            return `<span class="meta-item"><strong>${formatMetaLabel(key)}:</strong> ${escapeHtml(val)}</span>`;
+                            return `<div class="meta-item"><strong>${formatMetaLabel(key)}:</strong> ${escapeHtml(val)}</div>`;
                         }).join('')}
                     </div>
                 </div>
@@ -661,7 +656,7 @@ const TYPE_FIELDS = {
     tvshow: [
         { id: 'creator', label: 'Creator(s)', type: 'text' },
         { id: 'actors', label: 'Actor(s)', type: 'text' },
-        { id: 'year', label: 'Year', type: 'number' },
+        { id: 'year', label: 'Year (e.g. 2021-2024)', type: 'text' },
         { id: 'network', label: 'Network / Platform', type: 'text' },
         { id: 'showStatus', label: 'Show Status', type: 'select', options: ['Ongoing', 'Completed', 'Canceled'] },
         { id: 'seasons', label: 'Seasons', type: 'number' },
@@ -710,10 +705,12 @@ function renderTypeFields(type, data = {}) {
                 const yearVal = data[f.id] || '';
                 const yearNum = parseInt(yearVal);
                 const calLabel = yearNum ? (isJalaliYear(yearNum) ? '☀️ شمسی' : '📅 AD') : '';
+                const inputType = f.type === 'text' ? 'text' : 'number';
+                const placeholder = f.type === 'text' ? 'e.g. 2021-2024 or 1400-1403' : 'e.g. 2024 or 1403';
                 return `<div class="form-group">
                     <label for="field_${f.id}">${f.label}</label>
                     <div class="year-input-wrapper">
-                        <input type="number" id="field_${f.id}" value="${escapeHtml(yearVal)}" placeholder="e.g. 2024 or 1403">
+                        <input type="${inputType}" id="field_${f.id}" value="${escapeHtml(yearVal)}" placeholder="${placeholder}">
                         <span class="year-cal-label" id="yearCalLabel_${f.id}">${calLabel}</span>
                         <button type="button" class="btn btn-secondary btn-sm year-toggle" onclick="toggleYearCalendar('field_${f.id}')" title="Convert Shamsi ↔ Gregorian">🔄</button>
                     </div>
@@ -868,15 +865,37 @@ function isJalaliYear(year) {
 
 function toggleYearCalendar(fieldId) {
     const input = document.getElementById(fieldId);
-    const val = parseInt(input.value);
-    if (!val) return;
-    if (isJalaliYear(val)) {
-        input.value = jalaliToGregorian(val);
-        showToast(`Converted: ${val} شمسی → ${input.value} AD`);
+    const raw = input.value.trim();
+    if (!raw) return;
+
+    // Handle year ranges like "2021-2024" or "2021-"
+    if (raw.includes('-')) {
+        const parts = raw.split('-');
+        const start = parseInt(parts[0]);
+        const end = parts[1] ? parseInt(parts[1]) : null;
+        if (!start) return;
+        if (isJalaliYear(start)) {
+            const convStart = jalaliToGregorian(start);
+            const convEnd = end ? jalaliToGregorian(end) : '';
+            input.value = `${convStart}-${convEnd}`;
+            showToast(`Converted: ${raw} شمسی → ${input.value} AD`);
+        } else {
+            const convStart = gregorianToJalali(start);
+            const convEnd = end ? gregorianToJalali(end) : '';
+            input.value = `${convStart}-${convEnd}`;
+            showToast(`Converted: ${raw} AD → ${input.value} شمسی`);
+        }
     } else {
-        const jalali = gregorianToJalali(val);
-        input.value = jalali;
-        showToast(`Converted: ${val} AD → ${jalali} شمسی`);
+        const val = parseInt(raw);
+        if (!val) return;
+        if (isJalaliYear(val)) {
+            input.value = jalaliToGregorian(val);
+            showToast(`Converted: ${val} شمسی → ${input.value} AD`);
+        } else {
+            const jalali = gregorianToJalali(val);
+            input.value = jalali;
+            showToast(`Converted: ${val} AD → ${jalali} شمسی`);
+        }
     }
     updateYearCalLabel(fieldId);
 }
@@ -1063,6 +1082,60 @@ function formatMetaLabel(key) {
         narrator: 'Narrator', publisher: 'Publisher'
     };
     return labels[key] || key;
+}
+
+function getOrderedMeta(review) {
+    const fields = TYPE_FIELDS[review.type];
+    if (!fields) {
+        return Object.entries(review.meta).map(([key, val]) => ({ key, val }));
+    }
+    const ordered = [];
+    const fieldIds = fields.map(f => f.id);
+    // Add fields in TYPE_FIELDS order
+    fieldIds.forEach(id => {
+        if (review.meta[id] != null && review.meta[id] !== '') {
+            ordered.push({ key: id, val: String(review.meta[id]) });
+        }
+    });
+    // Add any extra meta keys not in TYPE_FIELDS
+    Object.entries(review.meta).forEach(([key, val]) => {
+        if (!fieldIds.includes(key) && val != null && val !== '') {
+            ordered.push({ key, val: String(val) });
+        }
+    });
+    return ordered;
+}
+
+function formatYearDisplay(val) {
+    // Handle year ranges like "2021-2024" or "2021-"
+    const parts = String(val).split('-').map(s => s.trim());
+    if (parts.length === 1) {
+        // Single year
+        const yearNum = parseInt(parts[0]);
+        if (!yearNum) return `<strong>Year:</strong> ${escapeHtml(val)}`;
+        const calType = isJalaliYear(yearNum) ? '☀️ شمسی' : '📅 AD';
+        const converted = isJalaliYear(yearNum)
+            ? `${jalaliToGregorian(yearNum)} AD`
+            : `${gregorianToJalali(yearNum)} شمسی`;
+        return `<strong>Year:</strong> ${escapeHtml(val)} <span class="year-cal-badge">${calType}</span> <span class="year-converted">(${converted})</span>`;
+    }
+    // Year range
+    const startYear = parseInt(parts[0]);
+    const endYear = parts[1] ? parseInt(parts[1]) : null;
+    if (!startYear) return `<strong>Year:</strong> ${escapeHtml(val)}`;
+    const startCal = isJalaliYear(startYear) ? 'شمسی' : 'AD';
+    let display = `<strong>Year:</strong> ${escapeHtml(val)} <span class="year-cal-badge">${startCal === 'شمسی' ? '☀️ شمسی' : '📅 AD'}</span>`;
+    // Show conversion
+    if (startCal === 'شمسی') {
+        const convStart = jalaliToGregorian(startYear);
+        const convEnd = endYear ? jalaliToGregorian(endYear) : '';
+        display += ` <span class="year-converted">(${convStart}${convEnd ? '-' + convEnd : '-'} AD)</span>`;
+    } else {
+        const convStart = gregorianToJalali(startYear);
+        const convEnd = endYear ? gregorianToJalali(endYear) : '';
+        display += ` <span class="year-converted">(${convStart}${convEnd ? '-' + convEnd : '-'} شمسی)</span>`;
+    }
+    return display;
 }
 
 function formatDate(dateStr) {

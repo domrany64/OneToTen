@@ -536,9 +536,9 @@ body {
 }
 
 .review-detail-meta-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem 2rem;
 }
 
 .meta-item {
@@ -966,6 +966,10 @@ body {
     }
 
     .type-fields-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .review-detail-meta-list {
         grid-template-columns: 1fr;
     }
 
