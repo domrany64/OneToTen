@@ -401,6 +401,9 @@ function renderReviewList() {
                         <option value="completed" ${filterStatus === 'completed' ? 'selected' : ''}>Completed</option>
                         <option value="in-progress" ${filterStatus === 'in-progress' ? 'selected' : ''}>In Progress</option>
                         <option value="dropped" ${filterStatus === 'dropped' ? 'selected' : ''}>Dropped</option>
+                        <option value="playing" ${filterStatus === 'playing' ? 'selected' : ''}>Playing</option>
+                        <option value="abandoned" ${filterStatus === 'abandoned' ? 'selected' : ''}>Abandoned</option>
+                        <option value="avoid" ${filterStatus === 'avoid' ? 'selected' : ''}>Avoid</option>
                     </select>
                 </div>
                 <div class="sidebar-section">
@@ -843,6 +846,7 @@ function openModal(editId = null) {
         modalTitle.textContent = 'Edit Review';
         document.getElementById('reviewId').value = editId;
         document.getElementById('reviewType').value = review.type || '';
+        updateStatusOptions(review.type || '', review.status || 'completed');
         document.getElementById('reviewStatus').value = review.status || 'completed';
         document.getElementById('reviewTitle').value = review.title || '';
         scoreSlider.value = review.score || 5;
@@ -961,8 +965,34 @@ function formatStatus(status) {
         case 'completed': return 'Completed';
         case 'in-progress': return 'In Progress';
         case 'dropped': return 'Dropped';
+        case 'playing': return 'Playing';
+        case 'abandoned': return 'Abandoned';
+        case 'avoid': return 'Avoid';
         default: return status;
     }
+}
+
+function updateStatusOptions(type, currentStatus) {
+    const statusSelect = document.getElementById('reviewStatus');
+    if (!statusSelect) return;
+    let options;
+    if (type === 'boardgame') {
+        options = [
+            { value: 'playing', label: 'Playing' },
+            { value: 'abandoned', label: 'Abandoned' },
+            { value: 'avoid', label: 'Avoid' }
+        ];
+    } else {
+        options = [
+            { value: 'completed', label: 'Completed' },
+            { value: 'in-progress', label: 'In Progress' },
+            { value: 'dropped', label: 'Dropped' },
+            { value: 'avoid', label: 'Avoid' }
+        ];
+    }
+    statusSelect.innerHTML = options.map(o =>
+        `<option value="${o.value}" ${currentStatus === o.value ? 'selected' : ''}>${o.label}</option>`
+    ).join('');
 }
 
 function formatMetaLabel(key) {
@@ -1009,6 +1039,7 @@ scoreSlider.addEventListener('input', () => {
 // Type change → render type-specific fields
 document.getElementById('reviewType').addEventListener('change', (e) => {
     renderTypeFields(e.target.value);
+    updateStatusOptions(e.target.value, document.getElementById('reviewStatus').value);
 });
 
 // Add Link button

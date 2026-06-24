@@ -61,6 +61,7 @@
                             <option value="completed">Completed</option>
                             <option value="in-progress">In Progress</option>
                             <option value="dropped">Dropped</option>
+                            <option value="avoid">Avoid</option>
                         </select>
                     </div>
                 </div>
@@ -71,9 +72,9 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="reviewScore">Score (1–10)</label>
+                    <label for="reviewScore">Score (0–10)</label>
                     <div class="score-input-wrapper">
-                        <input type="range" id="reviewScore" min="1" max="10" value="5">
+                        <input type="range" id="reviewScore" min="0" max="10" value="5">
                         <span class="score-display" id="scoreDisplay">5</span>
                     </div>
                 </div>
