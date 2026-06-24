@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import IMDb Ratings → OneToTen</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+        h1 { margin-bottom: 0.5rem; }
+        .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+        .drop-zone {
+            border: 2px dashed #475569; border-radius: 12px; padding: 3rem;
+            text-align: center; margin-bottom: 1.5rem; cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: #6366f1; }
+        .drop-zone p { color: #94a3b8; }
+        input[type="file"] { display: none; }
+        .controls { display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        button {
+            padding: 0.6rem 1.5rem; border: none; border-radius: 8px; font-size: 0.9rem;
+            cursor: pointer; font-weight: 600;
+        }
+        .btn-primary { background: #6366f1; color: white; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-secondary { background: #334155; color: #e2e8f0; }
+        .stats { display: flex; gap: 2rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .stat { background: #1e293b; padding: 1rem 1.5rem; border-radius: 8px; }
+        .stat-num { font-size: 1.5rem; font-weight: 700; color: #6366f1; }
+        .stat-label { font-size: 0.8rem; color: #94a3b8; }
+        .progress-bar { width: 100%; height: 8px; background: #1e293b; border-radius: 4px; margin-bottom: 1rem; overflow: hidden; }
+        .progress-fill { height: 100%; background: #6366f1; border-radius: 4px; transition: width 0.3s; width: 0%; }
+        #log { background: #1e293b; border-radius: 8px; padding: 1rem; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; line-height: 1.6; }
+        .log-success { color: #22c55e; }
+        .log-skip { color: #eab308; }
+        .log-error { color: #ef4444; }
+        .log-info { color: #94a3b8; }
+        .preview-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.8rem; }
+        .preview-table th, .preview-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #334155; text-align: left; }
+        .preview-table th { color: #94a3b8; font-weight: 600; }
+        .preview-table tr:hover { background: #1e293b; }
+        .type-movie { color: #f472b6; }
+        .type-tvshow { color: #60a5fa; }
+        label { display: flex; align-items: center; gap: 0.5rem; color: #94a3b8; font-size: 0.85rem; cursor: pointer; }
+        input[type="checkbox"] { accent-color: #6366f1; }
+    </style>
+</head>
+<body>
+    <h1>📥 Import IMDb Ratings</h1>
+    <p class="subtitle">Upload your IMDb ratings CSV export to migrate to OneToTen</p>
+
+    <div class="drop-zone" id="dropZone">
+        <p>📁 Drop your <strong>ratings.csv</strong> here or click to browse</p>
+        <input type="file" id="fileInput" accept=".csv">
+    </div>
+
+    <div id="preview" style="display:none">
+        <div class="stats" id="stats"></div>
+        <div style="max-height: 300px; overflow-y: auto; margin-bottom: 1.5rem;">
+            <table class="preview-table" id="previewTable">
+                <thead><tr><th></th><th>Title</th><th>Type</th><th>Year</th><th>Score</th><th>IMDb ID</th></tr></thead>
+                <tbody id="previewBody"></tbody>
+            </table>
+        </div>
+        <div class="controls">
+            <label><input type="checkbox" id="skipExisting" checked> Skip titles already in DB (by title match)</label>
+        </div>
+        <div class="controls">
+            <button class="btn-primary" id="importBtn" disabled>Import All</button>
+            <button class="btn-secondary" id="clearBtn">Clear</button>
+            <span id="importStatus" style="color: #94a3b8; font-size: 0.85rem;"></span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div id="log"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+        import { getDatabase, ref, push, set, get } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB9xbxS4TTADWrs1oxT5ZbImiK0rtOgHpc",
+            authDomain: "one-to-ten-92b88.firebaseapp.com",
+            databaseURL: "https://one-to-ten-92b88-default-rtdb.firebaseio.com",
+            projectId: "one-to-ten-92b88",
+            storageBucket: "one-to-ten-92b88.firebasestorage.app",
+            messagingSenderId: "529395513518",
+            appId: "1:529395513518:web:5832a4804f09a0d78b953f",
+            measurementId: "G-R9Y96743YQ"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+
+        let parsedRows = [];
+        let currentUser = null;
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) {
+                log('Authenticated as ' + user.email, 'info');
+                document.getElementById('importBtn').disabled = false;
+            } else {
+                log('Not logged in — please log in on the main app first, or enter credentials below.', 'error');
+                promptLogin();
+            }
+        });
+
+        function promptLogin() {
+            const email = prompt('Firebase email:');
+            if (!email) return;
+            const password = prompt('Firebase password:');
+            if (!password) return;
+            signInWithEmailAndPassword(auth, email, password)
+                .then(() => log('Logged in!', 'success'))
+                .catch(err => log('Login failed: ' + err.message, 'error'));
+        }
+
+        // CSV Parser
+        function parseCSV(text) {
+            const lines = text.split('\n');
+            if (lines.length < 2) return [];
+
+            const headers = parseCSVLine(lines[0]);
+            const rows = [];
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                const values = parseCSVLine(line);
+                const row = {};
+                headers.forEach((h, idx) => row[h.trim()] = (values[idx] || '').trim());
+                rows.push(row);
+            }
+            return rows;
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') {
+                    if (inQuotes && line[i + 1] === '"') {
+                        current += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (ch === ',' && !inQuotes) {
+                    result.push(current);
+                    current = '';
+                } else {
+                    current += ch;
+                }
+            }
+            result.push(current);
+            return result;
+        }
+
+        // Map IMDb type to OneToTen type
+        function mapType(imdbType) {
+            const t = (imdbType || '').toLowerCase();
+            if (t.includes('movie') || t.includes('film') || t === 'short' || t === 'video') return 'movie';
+            if (t.includes('series') || t.includes('episode') || t.includes('mini')) return 'tvshow';
+            if (t.includes('game')) return 'videogame';
+            return 'movie'; // default
+        }
+
+        function mapTypeLabel(type) {
+            return { movie: '🎬 Movie', tvshow: '📺 TV Show', videogame: '🎮 Video Game' }[type] || type;
+        }
+
+        // File handling
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+        function handleFile(file) {
+            if (!file.name.endsWith('.csv')) {
+                alert('Please upload a .csv file');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const rows = parseCSV(e.target.result);
+                if (rows.length === 0) {
+                    alert('No data found in CSV');
+                    return;
+                }
+                parsedRows = rows.map(r => ({
+                    imdbId: r['Const'] || r['const'] || r['IMDb ID'] || '',
+                    title: r['Title'] || r['title'] || '',
+                    year: r['Year'] || r['year'] || '',
+                    score: parseInt(r['Your Rating'] || r['your rating'] || r['Rating'] || '0'),
+                    type: mapType(r['Title Type'] || r['title type'] || r['Type'] || ''),
+                    imdbRating: r['IMDb Rating'] || '',
+                    dateRated: r['Date Rated'] || r['date rated'] || '',
+                    genres: r['Genres'] || r['genres'] || '',
+                    directors: r['Directors'] || r['directors'] || '',
+                    rawType: r['Title Type'] || r['title type'] || r['Type'] || ''
+                })).filter(r => r.title);
+
+                showPreview();
+            };
+            reader.readAsText(file);
+        }
+
+        function showPreview() {
+            document.getElementById('preview').style.display = 'block';
+            const movies = parsedRows.filter(r => r.type === 'movie').length;
+            const tvshows = parsedRows.filter(r => r.type === 'tvshow').length;
+            const other = parsedRows.length - movies - tvshows;
+
+            document.getElementById('stats').innerHTML = `
+                <div class="stat"><div class="stat-num">${parsedRows.length}</div><div class="stat-label">Total Ratings</div></div>
+                <div class="stat"><div class="stat-num">${movies}</div><div class="stat-label">Movies</div></div>
+                <div class="stat"><div class="stat-num">${tvshows}</div><div class="stat-label">TV Shows</div></div>
+                ${other > 0 ? `<div class="stat"><div class="stat-num">${other}</div><div class="stat-label">Other</div></div>` : ''}
+            `;
+
+            const tbody = document.getElementById('previewBody');
+            tbody.innerHTML = parsedRows.slice(0, 100).map((r, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td>${esc(r.title)}</td>
+                    <td class="type-${r.type}">${mapTypeLabel(r.type)}</td>
+                    <td>${esc(r.year)}</td>
+                    <td>${r.score}/10</td>
+                    <td><a href="https://www.imdb.com/title/${esc(r.imdbId)}" target="_blank" style="color:#6366f1">${esc(r.imdbId)}</a></td>
+                </tr>
+            `).join('');
+            if (parsedRows.length > 100) {
+                tbody.innerHTML += `<tr><td colspan="6" style="color:#94a3b8; text-align:center;">... and ${parsedRows.length - 100} more</td></tr>`;
+            }
+
+            log(`Parsed ${parsedRows.length} ratings from CSV`, 'info');
+        }
+
+        function esc(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // Import
+        document.getElementById('importBtn').addEventListener('click', startImport);
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            parsedRows = [];
+            document.getElementById('preview').style.display = 'none';
+            document.getElementById('log').innerHTML = '';
+            fileInput.value = '';
+        });
+
+        async function startImport() {
+            if (!currentUser) {
+                alert('Please log in first');
+                return;
+            }
+
+            const importBtn = document.getElementById('importBtn');
+            importBtn.disabled = true;
+            const skipExisting = document.getElementById('skipExisting').checked;
+            const progressFill = document.getElementById('progressFill');
+            const statusEl = document.getElementById('importStatus');
+
+            // Load existing reviews to check for duplicates
+            let existingTitles = new Set();
+            if (skipExisting) {
+                log('Loading existing reviews...', 'info');
+                const snapshot = await get(ref(db, 'reviews'));
+                const existing = snapshot.val() || {};
+                Object.values(existing).forEach(r => {
+                    existingTitles.add(r.title?.toLowerCase().trim());
+                });
+                log(`Found ${existingTitles.size} existing reviews in DB`, 'info');
+            }
+
+            let imported = 0, skipped = 0, errors = 0;
+            const total = parsedRows.length;
+
+            for (let i = 0; i < parsedRows.length; i++) {
+                const r = parsedRows[i];
+                const pct = ((i + 1) / total * 100).toFixed(1);
+                progressFill.style.width = pct + '%';
+                statusEl.textContent = `${i + 1} / ${total} (${pct}%)`;
+
+                // Skip duplicates
+                if (skipExisting && existingTitles.has(r.title.toLowerCase().trim())) {
+                    log(`⏭ Skipped (exists): ${r.title}`, 'skip');
+                    skipped++;
+                    continue;
+                }
+
+                // Build review object
+                const review = {
+                    title: r.title,
+                    type: r.type,
+                    score: r.score,
+                    status: 'completed',
+                    review: '',
+                    reviewLang: 'en',
+                    tags: r.genres ? r.genres.split(',').map(g => g.trim()).filter(Boolean).slice(0, 5) : [],
+                    meta: {},
+                    externalLinks: [{
+                        url: `https://www.imdb.com/title/${r.imdbId}/`,
+                        source: 'imdb'
+                    }],
+                    imageUrl: '',
+                    dateConsumed: r.dateRated || '',
+                    createdAt: Date.now()
+                };
+
+                if (r.year) review.meta.year = r.year;
+                if (r.directors) review.meta.director = r.directors;
+
+                try {
+                    const newRef = push(ref(db, 'reviews'));
+                    await set(newRef, review);
+                    imported++;
+                    log(`✅ Imported: ${r.title} (${r.type}, ${r.score}/10)`, 'success');
+                } catch (err) {
+                    errors++;
+                    log(`❌ Error: ${r.title} — ${err.message}`, 'error');
+                }
+
+                // Small delay to avoid hammering Firebase
+                if (i % 50 === 49) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
+
+            log(`\n━━━ Import Complete ━━━`, 'info');
+            log(`✅ Imported: ${imported}`, 'success');
+            if (skipped) log(`⏭ Skipped: ${skipped}`, 'skip');
+            if (errors) log(`❌ Errors: ${errors}`, 'error');
+
+            statusEl.textContent = `Done! ${imported} imported, ${skipped} skipped, ${errors} errors`;
+            importBtn.disabled = false;
+        }
+
+        function log(msg, type = 'info') {
+            const logEl = document.getElementById('log');
+            const line = document.createElement('div');
+            line.className = `log-${type}`;
+            line.textContent = msg;
+            logEl.appendChild(line);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    </script>
+</body>
+</html>
