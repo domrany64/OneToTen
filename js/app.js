@@ -325,7 +325,9 @@ const TYPE_FIELDS = {
         { id: 'author', label: 'Author', type: 'text' },
         { id: 'year', label: 'Year', type: 'number' },
         { id: 'translator', label: 'Translator (if any)', type: 'text' },
-        { id: 'format', label: 'Format', type: 'select', options: ['Physical', 'eBook', 'Audiobook'] }
+        { id: 'format', label: 'Format', type: 'select', options: ['Physical', 'eBook', 'Audiobook'] },
+        { id: 'narrator', label: 'Narrator / Reader', type: 'text' },
+        { id: 'publisher', label: 'Audiobook Publisher', type: 'text' }
     ]
 };
 
@@ -508,7 +510,8 @@ function formatMetaLabel(key) {
         studio: 'Studio', network: 'Network', seasons: 'Seasons', episodes: 'Episodes',
         developer: 'Developer', platform: 'Platform',
         designer: 'Designer', playerCount: 'Players',
-        author: 'Author', translator: 'Translator', format: 'Format'
+        author: 'Author', translator: 'Translator', format: 'Format',
+        narrator: 'Narrator', publisher: 'Publisher'
     };
     return labels[key] || key;
 }
