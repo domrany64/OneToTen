@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OneToTen — Personal Media Reviews</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Vazirmatn:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="header-inner">
+            <a href="#/" class="logo">🎯 OneToTen</a>
+            <button class="btn btn-primary" id="addReviewBtn">+ Add Review</button>
+        </div>
+        <nav class="nav-tabs" id="navTabs">
+            <a href="#/all" class="nav-tab active" data-type="all">All</a>
+            <a href="#/movies" class="nav-tab" data-type="movie">🎬 Movies</a>
+            <a href="#/tvshows" class="nav-tab" data-type="tvshow">📺 TV Shows</a>
+            <a href="#/videogames" class="nav-tab" data-type="videogame">🎮 Games</a>
+            <a href="#/boardgames" class="nav-tab" data-type="boardgame">🎲 Board Games</a>
+            <a href="#/books" class="nav-tab" data-type="book">📚 Books</a>
+        </nav>
+    </header>
+
+    <main class="main" id="mainContent">
+        <!-- Dynamic content rendered here -->
+    </main>
+
+    <!-- Add/Edit Review Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal" id="reviewModal">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add Review</h2>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <form id="reviewForm" class="review-form">
+                <input type="hidden" id="reviewId">
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="reviewType">Type</label>
+                        <select id="reviewType" required>
+                            <option value="">Select type...</option>
+                            <option value="movie">🎬 Movie</option>
+                            <option value="tvshow">📺 TV Show</option>
+                            <option value="videogame">🎮 Video Game</option>
+                            <option value="boardgame">🎲 Board Game</option>
+                            <option value="book">📚 Book</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="reviewStatus">Status</label>
+                        <select id="reviewStatus" required>
+                            <option value="completed">Completed</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="dropped">Dropped</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="reviewTitle">Title</label>
+                    <input type="text" id="reviewTitle" required placeholder="Enter title...">
+                </div>
+
+                <div class="form-group">
+                    <label for="reviewScore">Score (1–10)</label>
+                    <div class="score-input-wrapper">
+                        <input type="range" id="reviewScore" min="1" max="10" value="5">
+                        <span class="score-display" id="scoreDisplay">5</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="reviewLang">Review Language</label>
+                    <select id="reviewLang">
+                        <option value="en">English</option>
+                        <option value="fa">فارسی</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="reviewText">Review</label>
+                    <textarea id="reviewText" rows="5" placeholder="Write your review..."></textarea>
+                </div>
+
+                <!-- Type-specific fields injected here -->
+                <div id="typeSpecificFields"></div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="externalUrl">External Link</label>
+                        <input type="url" id="externalUrl" placeholder="https://imdb.com/title/...">
+                    </div>
+                    <div class="form-group">
+                        <label for="externalSource">Source</label>
+                        <select id="externalSource">
+                            <option value="">Auto-detect</option>
+                            <option value="imdb">IMDb</option>
+                            <option value="tvdb">TVDB</option>
+                            <option value="bgg">BoardGameGeek</option>
+                            <option value="igdb">IGDB</option>
+                            <option value="steam">Steam</option>
+                            <option value="goodreads">Goodreads</option>
+                            <option value="openlibrary">OpenLibrary</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="imageUrl">Cover Image URL (optional)</label>
+                    <input type="url" id="imageUrl" placeholder="https://...">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dateConsumed">Date Consumed</label>
+                        <input type="date" id="dateConsumed">
+                    </div>
+                    <div class="form-group">
+                        <label for="reviewTags">Tags (comma-separated)</label>
+                        <input type="text" id="reviewTags" placeholder="sci-fi, thriller, co-op">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Review</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div class="toast" id="toast"></div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
