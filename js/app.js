@@ -849,8 +849,8 @@ function openModal(editId = null) {
         updateStatusOptions(review.type || '', review.status || 'completed');
         document.getElementById('reviewStatus').value = review.status || 'completed';
         document.getElementById('reviewTitle').value = review.title || '';
-        scoreSlider.value = review.score || 5;
-        scoreDisplay.textContent = review.score || 5;
+        scoreSlider.value = review.score != null ? review.score : 5;
+        scoreDisplay.textContent = review.score != null ? review.score : 5;
         document.getElementById('reviewLang').value = review.reviewLang || 'en';
         document.getElementById('reviewText').value = review.review || '';
         updateReviewTextDirection();
