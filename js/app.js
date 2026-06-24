@@ -111,8 +111,13 @@ const SOURCE_LABELS = {
     steam: 'Steam',
     goodreads: 'Goodreads',
     openlibrary: 'OpenLibrary',
+    wikipedia: 'Wikipedia',
     other: 'Link'
 };
+
+const SOURCE_OPTIONS = Object.entries(SOURCE_LABELS).map(([val, label]) =>
+    `<option value="${val}">${label}</option>`
+).join('');
 
 // ===== Router =====
 function getRoute() {
@@ -326,14 +331,19 @@ function renderSingleReview(id) {
                 </div>
             ` : ''}
 
-            ${review.externalUrl ? `
-                <div class="review-detail-section">
-                    <h3>External Link</h3>
-                    <a href="${escapeHtml(review.externalUrl)}" target="_blank" rel="noopener noreferrer" class="review-detail-link">
-                        🔗 View on ${SOURCE_LABELS[review.externalSource] || 'External Site'}
-                    </a>
-                </div>
-            ` : ''}
+            ${(() => {
+                let links = review.externalLinks || [];
+                if (links.length === 0 && review.externalUrl) {
+                    links = [{ url: review.externalUrl, source: review.externalSource || 'other' }];
+                }
+                if (links.length === 0) return '';
+                return `<div class="review-detail-section">
+                    <h3>External Links</h3>
+                    ${links.map(l => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="review-detail-link">
+                        🔗 ${SOURCE_LABELS[l.source] || 'Link'}
+                    </a>`).join('')}
+                </div>`;
+            })()}
 
             ${review.tags && review.tags.length > 0 ? `
                 <div class="review-detail-section">
@@ -408,6 +418,15 @@ function renderTypeFields(type, data = {}) {
                     </select>
                 </div>`;
             }
+            if (f.id === 'year') {
+                return `<div class="form-group">
+                    <label for="field_${f.id}">${f.label}</label>
+                    <div class="year-input-wrapper">
+                        <input type="number" id="field_${f.id}" value="${escapeHtml(data[f.id] || '')}" placeholder="e.g. 2024 or 1403">
+                        <button type="button" class="btn btn-secondary btn-sm year-toggle" onclick="toggleYearCalendar('field_${f.id}')" title="Convert Shamsi ↔ Gregorian">🔄</button>
+                    </div>
+                </div>`;
+            }
             return `<div class="form-group">
                 <label for="field_${f.id}">${f.label}</label>
                 <input type="${f.type}" id="field_${f.id}" value="${escapeHtml(data[f.id] || '')}" placeholder="${f.label}">
@@ -425,6 +444,87 @@ function getTypeFieldValues(type) {
         if (el && el.value.trim()) values[f.id] = el.value.trim();
     });
     return values;
+}
+
+// ===== Multi External Links =====
+let linkCounter = 0;
+
+function addLinkRow(url = '', source = '') {
+    const container = document.getElementById('externalLinksContainer');
+    const idx = linkCounter++;
+    if (!source && url) source = detectSource(url);
+    const row = document.createElement('div');
+    row.className = 'link-row';
+    row.dataset.idx = idx;
+    row.innerHTML = `
+        <input type="url" class="link-url" placeholder="https://..." value="${escapeHtml(url)}">
+        <select class="link-source">
+            <option value="">Auto-detect</option>
+            ${SOURCE_OPTIONS}
+        </select>
+        <button type="button" class="btn btn-danger btn-sm link-remove" onclick="removeLinkRow(${idx})">✕</button>
+    `;
+    container.appendChild(row);
+    if (source) row.querySelector('.link-source').value = source;
+}
+
+function removeLinkRow(idx) {
+    const row = document.querySelector(`.link-row[data-idx="${idx}"]`);
+    if (row) row.remove();
+}
+
+function getExternalLinks() {
+    const rows = document.querySelectorAll('.link-row');
+    const links = [];
+    rows.forEach(row => {
+        const url = row.querySelector('.link-url').value.trim();
+        if (!url) return;
+        let source = row.querySelector('.link-source').value;
+        if (!source) source = detectSource(url);
+        links.push({ url, source });
+    });
+    return links;
+}
+
+function renderLinksInForm(links) {
+    const container = document.getElementById('externalLinksContainer');
+    container.innerHTML = '';
+    linkCounter = 0;
+    if (links && links.length > 0) {
+        links.forEach(l => addLinkRow(l.url, l.source));
+    } else {
+        addLinkRow(); // start with one empty row
+    }
+}
+
+// ===== Persian (Jalali) / Gregorian Year Conversion =====
+function gregorianToJalali(gy) {
+    // Approximate: only converts year (assumes March 21 as new year)
+    if (gy <= 621) return gy;
+    return gy - 621;
+}
+
+function jalaliToGregorian(jy) {
+    return jy + 621;
+}
+
+function isJalaliYear(year) {
+    // Jalali years are typically < 1500, Gregorian > 1500
+    return year < 1500;
+}
+
+function toggleYearCalendar(fieldId) {
+    const input = document.getElementById(fieldId);
+    const val = parseInt(input.value);
+    if (!val) return;
+    if (isJalaliYear(val)) {
+        input.value = jalaliToGregorian(val);
+        showToast(`Converted: ${val} شمسی → ${input.value} AD`);
+    } else {
+        const jalali = gregorianToJalali(val);
+        input.value = jalali;
+        showToast(`Converted: ${val} AD → ${jalali} شمسی`);
+    }
 }
 
 function openModal(editId = null) {
@@ -447,14 +547,19 @@ function openModal(editId = null) {
         document.getElementById('reviewLang').value = review.reviewLang || 'en';
         document.getElementById('reviewText').value = review.review || '';
         updateReviewTextDirection();
-        document.getElementById('externalUrl').value = review.externalUrl || '';
-        document.getElementById('externalSource').value = review.externalSource || '';
+        // Migrate old single-link to multi-link format
+        let links = review.externalLinks || [];
+        if (links.length === 0 && review.externalUrl) {
+            links = [{ url: review.externalUrl, source: review.externalSource || '' }];
+        }
+        renderLinksInForm(links);
         document.getElementById('imageUrl').value = review.imageUrl || '';
         document.getElementById('dateConsumed').value = review.dateConsumed || '';
         document.getElementById('reviewTags').value = (review.tags || []).join(', ');
         renderTypeFields(review.type, review.meta || {});
     } else {
         modalTitle.textContent = 'Add Review';
+        renderLinksInForm([]);
     }
 }
 
@@ -475,13 +580,7 @@ reviewForm.addEventListener('submit', (e) => {
     const tagsRaw = document.getElementById('reviewTags').value;
     const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
 
-    const externalUrl = document.getElementById('externalUrl').value.trim();
-    let externalSource = document.getElementById('externalSource').value;
-
-    // Auto-detect source from URL
-    if (externalUrl && !externalSource) {
-        externalSource = detectSource(externalUrl);
-    }
+    const externalLinks = getExternalLinks();
 
     const type = document.getElementById('reviewType').value;
     const reviewData = {
@@ -491,8 +590,7 @@ reviewForm.addEventListener('submit', (e) => {
         score: parseInt(scoreSlider.value),
         review: document.getElementById('reviewText').value.trim(),
         reviewLang: document.getElementById('reviewLang').value,
-        externalUrl: externalUrl,
-        externalSource: externalSource,
+        externalLinks: externalLinks,
         imageUrl: document.getElementById('imageUrl').value.trim(),
         dateConsumed: document.getElementById('dateConsumed').value,
         dateReviewed: new Date().toISOString().split('T')[0],
@@ -551,6 +649,7 @@ function detectSource(url) {
     if (url.includes('store.steampowered.com')) return 'steam';
     if (url.includes('goodreads.com')) return 'goodreads';
     if (url.includes('openlibrary.org')) return 'openlibrary';
+    if (url.includes('wikipedia.org')) return 'wikipedia';
     return 'other';
 }
 
@@ -611,6 +710,9 @@ document.getElementById('reviewType').addEventListener('change', (e) => {
     renderTypeFields(e.target.value);
 });
 
+// Add Link button
+document.getElementById('addLinkBtn').addEventListener('click', () => addLinkRow());
+
 // Language change → update textarea direction
 document.getElementById('reviewLang').addEventListener('change', updateReviewTextDirection);
 
@@ -634,6 +736,8 @@ window.deleteReview = deleteReview;
 window.copyShareLink = copyShareLink;
 window.handleLogin = handleLogin;
 window.hideLoginModal = hideLoginModal;
+window.removeLinkRow = removeLinkRow;
+window.toggleYearCalendar = toggleYearCalendar;
 
 // ===== Init =====
 handleRoute();
