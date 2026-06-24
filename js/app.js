@@ -663,8 +663,10 @@ const TYPE_FIELDS = {
         { id: 'actors', label: 'Actor(s)', type: 'text' },
         { id: 'year', label: 'Year', type: 'number' },
         { id: 'network', label: 'Network / Platform', type: 'text' },
+        { id: 'showStatus', label: 'Show Status', type: 'select', options: ['Ongoing', 'Completed', 'Canceled'] },
         { id: 'seasons', label: 'Seasons', type: 'number' },
-        { id: 'episodes', label: 'Episodes', type: 'number' }
+        { id: 'episodes', label: 'Episodes', type: 'number' },
+        { id: 'lastWatched', label: 'Last Watched (e.g. S02E05)', type: 'text' }
     ],
     videogame: [
         { id: 'developer', label: 'Developer(s)', type: 'text' },
@@ -1054,6 +1056,7 @@ function formatMetaLabel(key) {
     const labels = {
         director: 'Director', creator: 'Creator', actors: 'Actors', year: 'Year',
         studio: 'Studio', network: 'Network', seasons: 'Seasons', episodes: 'Episodes',
+        showStatus: 'Show Status', lastWatched: 'Last Watched',
         developer: 'Developer', platform: 'Platform',
         designer: 'Designer', playerCount: 'Players',
         author: 'Author', translator: 'Translator', format: 'Format',
