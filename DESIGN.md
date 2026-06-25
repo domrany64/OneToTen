@@ -2,7 +2,7 @@
 
 ## Overview
 
-OneToTen is a single-page personal review app for tracking and rating media across five categories: video games, board games, books, movies, and TV shows. It uses Firebase Realtime Database for storage and GitHub Pages for hosting.
+OneToTen is a single-page personal review app for tracking and rating media across five categories: video games, board games, books, movies, and TV shows. It uses Firebase Realtime Database for storage, Firebase Auth for write protection, and GitHub Pages for hosting.
 
 ---
 
@@ -12,14 +12,15 @@ OneToTen is a single-page personal review app for tracking and rating media acro
 ┌─────────────────────────────────────────────┐
 │              GitHub Pages (Static)           │
 │  ┌────────┐  ┌──────────┐  ┌────────────┐  │
-│  │  HTML  │  │   CSS    │  │     JS     │  │
+│  │  HTML  │  │   CSS    │  │  JS (ESM)  │  │
 │  └────────┘  └──────────┘  └─────┬──────┘  │
 │                                   │         │
 └───────────────────────────────────┼─────────┘
-                                    │ REST / SDK
+                                    │ Firebase SDK (modular v12.15.0)
                               ┌─────▼─────┐
                               │  Firebase  │
                               │ Realtime DB│
+                              │ + Auth     │
                               └───────────┘
 ```
 
@@ -33,19 +34,42 @@ OneToTen is a single-page personal review app for tracking and rating media acro
   "type": "movie | tvshow | videogame | boardgame | book",
   "title": "The Title",
   "score": 8,
-  "reviewEn": "English review text (optional)",
-  "reviewFa": "متن بررسی فارسی (optional)",
-  "externalUrl": "https://imdb.com/title/tt1234567",
-  "externalSource": "imdb | tvdb | bgg | igdb | steam | goodreads | openlibrary | other",
+  "review": "Review text (single field, English or Persian)",
+  "reviewLang": "en | fa",
+  "externalLinks": [
+    { "url": "https://imdb.com/title/tt1234567", "source": "imdb" },
+    { "url": "https://en.wikipedia.org/wiki/...", "source": "wikipedia" }
+  ],
   "imageUrl": "https://...",
-  "dateReviewed": "2026-06-24",
   "dateConsumed": "2026-06-20",
-  "status": "completed | in-progress | dropped",
+  "status": "completed | in-progress | dropped | playing | abandoned | avoid",
   "tags": ["sci-fi", "co-op"],
-  "createdAt": 1719187200000,
-  "updatedAt": 1719187200000
+  "meta": {
+    "director": "Christopher Nolan",
+    "actors": "Leonardo DiCaprio, Tom Hardy",
+    "year": "2010",
+    "studio": "Warner Bros"
+  },
+  "createdAt": 1719187200000
 }
 ```
+
+### Type-Specific Meta Fields
+
+| Type | Fields |
+|------|--------|
+| Movie | director, actors, year, studio |
+| TV Show | creator, actors, year (range: "2021-2024"), network, showStatus (Ongoing/Completed/Canceled), seasons, episodes, lastWatched |
+| Video Game | developer, year, platform |
+| Board Game | designer, year, playerCount |
+| Book | author, year, translator, format, narrator, publisher |
+
+### Status Options by Type
+
+| Type | Available Statuses |
+|------|-------------------|
+| Movie, TV Show, Video Game, Book | Completed, In Progress, Dropped, Avoid |
+| Board Game | Playing, Abandoned, Avoid |
 
 ### Firebase Structure
 
@@ -78,93 +102,105 @@ OneToTen is a single-page personal review app for tracking and rating media acro
 ### Header
 - Site title "OneToTen"
 - Navigation tabs for media categories
-- Add Review button
+- Add Review button (visible when logged in)
+- Login/Logout button
 
-### Main Content Area
+### Main Content Area (with Sidebar)
+- **Sidebar (left):** Sort, score filter, status filter, year range (from/to), searchable tag combobox, context-specific creator/author/director filter
 - **List View:** Grid/cards showing reviews with title, score badge, type icon, and thumbnail
-- **Single Review View:** Full review with score, text (bilingual), external link, metadata
-- **Form View:** Add/edit form with fields for all review properties
+- **Single Review View:** Full review with score, text, ordered metadata (2-column grid), external links, tags
+- **Form View:** Add/edit form with type-specific fields, multiple external links (drag-to-reorder), year calendar toggle
 
 ### Score Display
-- Large circular badge showing score (1–10)
-- Color-coded: 1-3 red, 4-5 orange, 6-7 yellow, 8-9 green, 10 gold
+- Circular badge showing score (0–10)
+- Color-coded: 0 dark gray with border, 1-3 red, 4-5 orange, 6-7 yellow, 8-9 green, 10 green gradient with glow
 
 ---
 
-## UI Components
+## External Link Sources (Context-Specific)
 
-### Review Card (List View)
-```
-┌─────────────────────────────┐
-│  [Thumbnail/Icon]           │
-│  Title              [8/10]  │
-│  🎬 Movie · 2026-06-20     │
-│  ★★★★★★★★☆☆               │
-└─────────────────────────────┘
-```
+| Media Type | Available Sources |
+|-----------|-------------------|
+| Movie | IMDb, Wikipedia |
+| TV Show | IMDb, TVDB, Wikipedia |
+| Video Game | Steam, Epic Games, GOG, Ubisoft, Xbox, PlayStation, IGDB, Wikipedia |
+| Board Game | BoardGameGeek, Wikipedia |
+| Book | Goodreads, OpenLibrary, Wikipedia |
 
-### Single Review View (Shareable)
-```
-┌─────────────────────────────────────────┐
-│  ← Back                                 │
-│                                         │
-│  [Large Thumbnail]                      │
-│                                         │
-│  Title                         [8/10]   │
-│  🎬 Movie · Watched: Jun 20, 2026      │
-│                                         │
-│  ─── English ───                        │
-│  Review text in English...              │
-│                                         │
-│  ─── فارسی ───                          │
-│  متن بررسی فارسی...                     │
-│                                         │
-│  🔗 View on IMDb                        │
-│  Tags: sci-fi, thriller                 │
-│                                         │
-│  [Edit] [Delete] [Share Link]           │
-└─────────────────────────────────────────┘
-```
-
----
-
-## External Link Sources
-
-| Media Type | Supported Sources | URL Pattern |
-|-----------|-------------------|-------------|
-| Movie | IMDb | `https://imdb.com/title/tt*` |
-| TV Show | IMDb, TVDB | `https://thetvdb.com/series/*` |
-| Board Game | BoardGameGeek | `https://boardgamegeek.com/boardgame/*` |
-| Video Game | IGDB, Steam | `https://store.steampowered.com/app/*` |
-| Book | Goodreads, OpenLibrary | `https://goodreads.com/book/show/*` |
-
----
-
-## Bilingual Support
-
-- Reviews can have English text, Persian text, or both
-- Persian text is displayed RTL with appropriate font (Vazirmatn)
-- The UI itself is in English, but review content supports both languages
-- Language toggle on review cards if both are present
-
----
-
-## Sharing
-
-- Each review has a unique Firebase key used in the URL hash
-- Sharing = copying the URL `https://site.url/#/review/<id>`
-- The shared view is read-only and shows all review details
-- A "Copy Link" button generates the shareable URL
+Links are stored as an ordered array and can be reordered via drag-and-drop in the edit form. Source is auto-detected from URL when possible.
 
 ---
 
 ## Filtering & Sorting
 
-- Filter by media type (tabs)
-- Filter by score range
-- Filter by status (completed, in-progress, dropped)
-- Sort by: date reviewed, date consumed, score, title
-- Search by title (client-side)
+### Sidebar Filters
+- **Sort:** Newest First, Highest Score, Lowest Score, Title A–Z, Date Consumed
+- **Score:** All, 10⭐, 8–9, 6–7, 4–5, 1–3
+- **Status:** All statuses including type-specific ones (Playing, Abandoned, Avoid)
+- **Year range:** From / To number inputs
+- **Tag:** Searchable combobox (type to filter, dropdown with matching options)
+- **Creator:** Context-specific searchable combobox — hidden on "All" page, shows:
+  - Movies/TV: Director / Actor
+  - Video Games: Developer
+  - Board Games: Designer
+  - Books: Author / Narrator
+
+### Search
+- Client-side search across title, tags, and meta field values
+
+---
+
+## Bilingual Support
+
+- Single review text field with language toggle (English / Persian)
+- Persian text is displayed RTL with Vazirmatn font
+- UI is in English, review content supports both languages
+
+---
+
+## Year & Calendar Support
+
+- Year fields show calendar type indicator: ☀️ شمسی or 📅 AD
+- Auto-detects: year < 1500 = Shamsi, ≥ 1500 = Gregorian
+- 🔄 toggle button converts between calendars
+- TV shows support year ranges (e.g. "2021-2024" or "2021-" for ongoing)
+- View mode shows both calendars (e.g. "2021-2024 📅 AD (1400-1403 شمسی)")
+
+---
+
+## Authentication
+
+- Firebase Email/Password authentication
+- Login modal in the app header
+- When logged out: read-only (can browse, view, share)
+- When logged in: Add Review button visible, Edit/Delete buttons on reviews
+- DB rules restrict writes to authenticated users
+
+---
+
+## Modal Behavior
+
+- Clicking outside the modal does NOT close it (prevents accidental data loss)
+- Must use X button or Cancel to close
+
+---
+
+## Automated Backups
+
+- GitHub Actions workflow runs weekly (Sunday 3AM UTC) or manually
+- Exports full DB as JSON to `/backups/` directory
+- Retains last 10 backups
+
+---
+
+## IMDb Import Tool
+
+- Standalone page (`import-imdb.html`)
+- Upload IMDb ratings CSV export
+- Parses all ratings, maps types (movie/TV), scores as-is
+- Imports with: status=completed, genres as tags, directors as meta, IMDb link
+- Skips duplicates by title match
+- Shows preview, progress bar, and detailed log
 
 ---
 
@@ -176,11 +212,12 @@ OneToTen is a single-page personal review app for tracking and rating media acro
 | Background | `#0f172a` (dark slate) |
 | Surface | `#1e293b` |
 | Text | `#f8fafc` |
+| Score 0 | `#374151` (dark gray + border) |
 | Score 1-3 | `#ef4444` (red) |
 | Score 4-5 | `#f97316` (orange) |
 | Score 6-7 | `#eab308` (yellow) |
 | Score 8-9 | `#22c55e` (green) |
-| Score 10 | `#fbbf24` (gold) |
+| Score 10 | Green gradient + glow |
 | Font (English) | Inter, system-ui |
 | Font (Persian) | Vazirmatn |
 
@@ -188,16 +225,16 @@ OneToTen is a single-page personal review app for tracking and rating media acro
 
 ## Responsive Breakpoints
 
-- Mobile: < 640px (1 column, stacked cards)
+- Mobile: < 640px (1 column, sidebar collapses to horizontal, meta list single column)
 - Tablet: 640–1024px (2 columns)
-- Desktop: > 1024px (3 columns)
+- Desktop: > 1024px (3 columns, sticky sidebar)
 
 ---
 
-## Future Enhancements (Out of Scope for V1)
+## Future Enhancements
 
-- Image upload / auto-fetch from external APIs
-- User authentication (multi-user support)
-- Import/export reviews as JSON
+- Image auto-fetch from external APIs
 - Statistics dashboard (avg score by type, reviews per month)
 - Dark/light theme toggle
+- Import/export reviews as JSON
+- Bulk edit operations

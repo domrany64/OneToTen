@@ -122,6 +122,7 @@ const SOURCE_LABELS = {
     playstation: 'PlayStation',
     goodreads: 'Goodreads',
     openlibrary: 'OpenLibrary',
+    iranketab: 'IranKetab',
     wikipedia: 'Wikipedia',
     other: 'Link'
 };
@@ -135,7 +136,7 @@ const TYPE_SOURCES = {
     tvshow: ['imdb', 'tvdb', 'wikipedia', 'other'],
     videogame: ['steam', 'epic', 'gog', 'ubisoft', 'xbox', 'playstation', 'igdb', 'wikipedia', 'other'],
     boardgame: ['bgg', 'wikipedia', 'other'],
-    book: ['goodreads', 'openlibrary', 'wikipedia', 'other']
+    book: ['goodreads', 'openlibrary', 'iranketab', 'wikipedia', 'other']
 };
 
 function getSourceOptionsForType(type) {
@@ -1060,6 +1061,7 @@ function detectSource(url) {
     if (url.includes('playstation.com') || url.includes('store.playstation.com')) return 'playstation';
     if (url.includes('goodreads.com')) return 'goodreads';
     if (url.includes('openlibrary.org')) return 'openlibrary';
+    if (url.includes('iranketab.ir')) return 'iranketab';
     if (url.includes('wikipedia.org')) return 'wikipedia';
     return 'other';
 }
