@@ -1546,29 +1546,27 @@ async function fetchRAWGDetails(rawgId) {
 }
 
 async function searchGoogleBooks(query) {
-    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=8`;
+    const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=8`;
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error('Google Books request failed');
+    if (!resp.ok) throw new Error('Open Library request failed');
     const data = await resp.json();
 
-    return (data.items || []).map(item => {
-        const info = item.volumeInfo || {};
-        const authors = (info.authors || []).join(', ');
-        const year = (info.publishedDate || '').substring(0, 4);
-        const image = info.imageLinks?.thumbnail || '';
+    return (data.docs || []).slice(0, 8).map(doc => {
+        const authors = (doc.author_name || []).join(', ');
+        const year = doc.first_publish_year ? String(doc.first_publish_year) : '';
+        const coverId = doc.cover_i;
+        const image = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-S.jpg` : '';
 
         return {
-            title: info.title || '',
+            title: doc.title || '',
             detail: [authors, year].filter(Boolean).join(' · '),
             image,
             meta: {
                 year,
                 author: authors,
-                publisher: info.publisher || '',
-                imageUrl: info.imageLinks?.thumbnail?.replace('&edge=curl', '') || '',
-                googleBooksId: item.id,
-                pageCount: info.pageCount ? String(info.pageCount) : '',
-                description: (info.description || '').substring(0, 200)
+                publisher: (doc.publisher || [])[0] || '',
+                imageUrl: coverId ? `https://covers.openlibrary.org/b/id/${coverId}-M.jpg` : '',
+                openLibraryKey: doc.key || ''
             }
         };
     });
