@@ -1,6 +1,6 @@
 // ===== Firebase Config =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
-import { getDatabase, ref, push, set, update, remove, onValue } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+import { getDatabase, ref, push, set, update, remove, onValue, get } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -18,7 +18,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
-const reviewsRef = ref(db, 'reviews');
+let reviewsRef = null;
+let reviewsListener = null;
 
 // ===== Auth State =====
 let currentUser = null;
@@ -26,7 +27,7 @@ let currentUser = null;
 onAuthStateChanged(auth, (user) => {
     currentUser = user;
     updateAuthUI();
-    handleRoute(); // re-render to show/hide edit buttons
+    setupReviewsListener();
 });
 
 function updateAuthUI() {
@@ -153,7 +154,7 @@ function getSourceOptionsForType(type) {
 function getRoute() {
     const hash = window.location.hash || '#/';
     const parts = hash.replace('#/', '').split('/');
-    return { path: parts[0] || 'all', param: parts[1] || null };
+    return { path: parts[0] || 'all', param: parts[1] || null, param2: parts[2] || null };
 }
 
 function navigate(hash) {
@@ -166,7 +167,13 @@ function handleRoute() {
     const route = getRoute();
 
     if (route.path === 'review' && route.param) {
-        renderSingleReview(route.param);
+        // Support both #/review/{uid}/{id} and legacy #/review/{id}
+        if (route.param2) {
+            renderSingleReview(route.param2, route.param); // uid, id
+        } else {
+            // Legacy link or own review
+            renderSingleReview(route.param, currentUser ? currentUser.uid : null);
+        }
     } else if (route.path === 'add') {
         openModal();
     } else if (route.path === 'edit' && route.param) {
@@ -186,10 +193,24 @@ function updateActiveTab() {
 }
 
 // ===== Firebase Listeners =====
-onValue(reviewsRef, (snapshot) => {
-    allReviews = snapshot.val() || {};
-    handleRoute();
-});
+function setupReviewsListener() {
+    // Detach old listener
+    if (reviewsListener) {
+        reviewsListener();
+        reviewsListener = null;
+    }
+    if (!currentUser) {
+        allReviews = {};
+        reviewsRef = null;
+        handleRoute();
+        return;
+    }
+    reviewsRef = ref(db, `reviews/${currentUser.uid}`);
+    reviewsListener = onValue(reviewsRef, (snapshot) => {
+        allReviews = snapshot.val() || {};
+        handleRoute();
+    });
+}
 
 // ===== Creator Filter Helpers =====
 function getCreatorFieldsForView() {
@@ -660,7 +681,7 @@ async function bulkDelete() {
     let deleted = 0;
     for (const id of selectedIds) {
         try {
-            await remove(ref(db, 'reviews/' + id));
+            await remove(ref(db, `reviews/${currentUser.uid}/${id}`));
             deleted++;
         } catch (e) {
             console.error('Delete failed:', id, e);
@@ -690,14 +711,14 @@ async function applyBulkModify() {
     const updates = {};
     for (const id of selectedIds) {
         if (field === 'score') {
-            updates[`reviews/${id}/score`] = parseInt(value) || 0;
+            updates[`reviews/${currentUser.uid}/${id}/score`] = parseInt(value) || 0;
         } else if (field === 'status') {
-            updates[`reviews/${id}/status`] = value;
+            updates[`reviews/${currentUser.uid}/${id}/status`] = value;
         } else if (field === 'tags') {
-            updates[`reviews/${id}/tags`] = value.split(',').map(t => t.trim()).filter(Boolean);
+            updates[`reviews/${currentUser.uid}/${id}/tags`] = value.split(',').map(t => t.trim()).filter(Boolean);
         } else {
             // meta fields
-            updates[`reviews/${id}/meta/${field}`] = value;
+            updates[`reviews/${currentUser.uid}/${id}/meta/${field}`] = value;
         }
     }
 
@@ -713,8 +734,23 @@ async function applyBulkModify() {
 }
 
 // ===== Render: Single Review =====
-function renderSingleReview(id) {
-    const review = allReviews[id];
+async function renderSingleReview(id, uid = null) {
+    let review = null;
+    const isOwnReview = uid && currentUser && uid === currentUser.uid;
+
+    if (!uid || isOwnReview) {
+        // Local data
+        review = allReviews[id];
+    } else {
+        // Fetch from another user's data
+        try {
+            const snap = await get(ref(db, `reviews/${uid}/${id}`));
+            review = snap.val();
+        } catch (e) {
+            review = null;
+        }
+    }
+
     if (!review) {
         mainContent.innerHTML = `
             <div class="empty-state">
@@ -732,7 +768,8 @@ function renderSingleReview(id) {
         ? `<img class="review-detail-image" src="${escapeHtml(review.imageUrl)}" alt="${escapeHtml(review.title)}">`
         : `<div class="review-detail-image-placeholder">${config.icon}</div>`;
 
-    const shareUrl = `${window.location.origin}${window.location.pathname}#/review/${id}`;
+    const shareUid = uid || (currentUser ? currentUser.uid : '');
+    const shareUrl = `${window.location.origin}${window.location.pathname}#/review/${shareUid}/${id}`;
 
     mainContent.innerHTML = `
         <div class="review-detail">
@@ -797,7 +834,7 @@ function renderSingleReview(id) {
 
             <div class="review-detail-actions">
                 <button class="btn btn-secondary" onclick="copyShareLink('${id}')">📋 Copy Link</button>
-                ${isLoggedIn() ? `
+                ${isOwnReview || (!uid && isLoggedIn()) ? `
                     <button class="btn btn-primary" onclick="openModal('${id}')">✏️ Edit</button>
                     <button class="btn btn-danger" onclick="deleteReview('${id}')">🗑️ Delete</button>
                 ` : ''}
@@ -1148,7 +1185,7 @@ reviewForm.addEventListener('submit', (e) => {
 
     if (id) {
         // Update existing
-        update(ref(db, `reviews/${id}`), reviewData);
+        update(ref(db, `reviews/${currentUser.uid}/${id}`), reviewData);
         showToast('Review updated!');
     } else {
         // Create new
@@ -1164,7 +1201,7 @@ reviewForm.addEventListener('submit', (e) => {
 // ===== Delete =====
 function deleteReview(id) {
     if (confirm('Are you sure you want to delete this review?')) {
-        remove(ref(db, `reviews/${id}`));
+        remove(ref(db, `reviews/${currentUser.uid}/${id}`));
         showToast('Review deleted');
         navigate('#/');
     }
@@ -1172,7 +1209,8 @@ function deleteReview(id) {
 
 // ===== Share =====
 function copyShareLink(id) {
-    const url = `${window.location.origin}${window.location.pathname}#/review/${id}`;
+    const uid = currentUser ? currentUser.uid : '';
+    const url = `${window.location.origin}${window.location.pathname}#/review/${uid}/${id}`;
     navigator.clipboard.writeText(url).then(() => {
         showToast('Link copied to clipboard!');
     }).catch(() => {

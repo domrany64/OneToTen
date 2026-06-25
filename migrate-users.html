@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Migrate Reviews to Per-User Structure</title>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+        button { padding: 0.6rem 1.5rem; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; font-weight: 600; }
+        .btn-primary { background: #6366f1; color: white; }
+        .btn-primary:disabled { opacity: 0.5; }
+        .btn-danger { background: #ef4444; color: white; }
+        #log { background: #1e293b; border-radius: 8px; padding: 1rem; margin-top: 1rem; max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; line-height: 1.6; }
+        .log-info { color: #94a3b8; } .log-success { color: #22c55e; } .log-error { color: #ef4444; } .log-skip { color: #eab308; }
+        .steps { margin: 1.5rem 0; } .steps li { margin: 0.5rem 0; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <h1>🔄 Migrate Reviews to Per-User Structure</h1>
+    <p style="color:#94a3b8; margin: 1rem 0;">This moves all reviews from <code>/reviews/{id}</code> to <code>/reviews/{your-uid}/{id}</code>.</p>
+    <ol class="steps">
+        <li>Log in with your account</li>
+        <li>Click "Migrate" to copy all existing reviews under your UID</li>
+        <li>Optionally clean up the old flat structure</li>
+    </ol>
+    <button class="btn-primary" id="migrateBtn" disabled>Migrate Reviews to My Account</button>
+    <button class="btn-danger" id="cleanupBtn" disabled style="margin-left: 1rem;">Delete Old Flat Structure</button>
+    <div id="log"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+        import { getDatabase, ref, get, set, remove } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+
+        const app = initializeApp({
+            apiKey: "AIzaSyB9xbxS4TTADWrs1oxT5ZbImiK0rtOgHpc",
+            authDomain: "one-to-ten-92b88.firebaseapp.com",
+            databaseURL: "https://one-to-ten-92b88-default-rtdb.firebaseio.com",
+            projectId: "one-to-ten-92b88",
+            storageBucket: "one-to-ten-92b88.firebasestorage.app",
+            messagingSenderId: "529395513518",
+            appId: "1:529395513518:web:5832a4804f09a0d78b953f"
+        });
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+        let currentUser = null;
+
+        const logEl = document.getElementById('log');
+        function log(msg, cls = 'info') {
+            const d = document.createElement('div');
+            d.className = 'log-' + cls;
+            d.textContent = msg;
+            logEl.appendChild(d);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        onAuthStateChanged(auth, user => {
+            currentUser = user;
+            if (user) {
+                log(`Authenticated as ${user.email} (UID: ${user.uid})`);
+                document.getElementById('migrateBtn').disabled = false;
+                document.getElementById('cleanupBtn').disabled = false;
+            } else {
+                const email = prompt('Firebase email:');
+                if (!email) return;
+                const pw = prompt('Firebase password:');
+                if (!pw) return;
+                signInWithEmailAndPassword(auth, email, pw).catch(e => log('Login failed: ' + e.message, 'error'));
+            }
+        });
+
+        document.getElementById('migrateBtn').addEventListener('click', async () => {
+            document.getElementById('migrateBtn').disabled = true;
+            log('Reading existing reviews from /reviews...');
+
+            const snap = await get(ref(db, 'reviews'));
+            const data = snap.val() || {};
+
+            // Check if already migrated (data has UID-like keys with nested objects)
+            const keys = Object.keys(data);
+            let reviewsToMigrate = {};
+
+            // Detect: if values are review objects (have 'title'), it's flat structure
+            // If values are objects of objects, it's already per-user
+            let isFlat = false;
+            for (const key of keys) {
+                if (data[key] && data[key].title) {
+                    isFlat = true;
+                    break;
+                }
+            }
+
+            if (!isFlat) {
+                log('Data appears to already be in per-user structure (or empty).', 'skip');
+                // Check if there's data under old flat keys that look like push IDs
+                for (const key of keys) {
+                    if (key.startsWith('-') && data[key] && data[key].title) {
+                        isFlat = true;
+                        break;
+                    }
+                }
+                if (!isFlat) {
+                    log('Nothing to migrate!', 'info');
+                    document.getElementById('migrateBtn').disabled = false;
+                    return;
+                }
+            }
+
+            // Collect flat reviews
+            for (const [id, review] of Object.entries(data)) {
+                if (review && review.title) {
+                    reviewsToMigrate[id] = review;
+                }
+            }
+
+            const count = Object.keys(reviewsToMigrate).length;
+            log(`Found ${count} reviews to migrate to /reviews/${currentUser.uid}/`);
+
+            if (count === 0) {
+                log('Nothing to migrate!');
+                document.getElementById('migrateBtn').disabled = false;
+                return;
+            }
+
+            // Write all reviews under the user's UID
+            try {
+                await set(ref(db, `reviews/${currentUser.uid}`), reviewsToMigrate);
+                log(`✅ Successfully migrated ${count} reviews to /reviews/${currentUser.uid}/`, 'success');
+                log('You can now use the app — your reviews are under your account.', 'success');
+                log('Click "Delete Old Flat Structure" to clean up old data (optional).', 'info');
+            } catch (e) {
+                log(`❌ Migration failed: ${e.message}`, 'error');
+            }
+
+            document.getElementById('migrateBtn').disabled = false;
+        });
+
+        document.getElementById('cleanupBtn').addEventListener('click', async () => {
+            if (!confirm('This will delete all review data that is NOT under a user UID path. Continue?')) return;
+            document.getElementById('cleanupBtn').disabled = true;
+
+            const snap = await get(ref(db, 'reviews'));
+            const data = snap.val() || {};
+            let deleted = 0;
+
+            for (const [key, value] of Object.entries(data)) {
+                // If it's a flat review (has 'title'), delete it
+                if (value && value.title) {
+                    await remove(ref(db, `reviews/${key}`));
+                    deleted++;
+                }
+            }
+
+            log(`🧹 Cleaned up ${deleted} old flat reviews`, 'success');
+            document.getElementById('cleanupBtn').disabled = false;
+        });
+    </script>
+</body>
+</html>
