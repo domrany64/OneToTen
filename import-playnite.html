@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import Playnite Library → OneToTen</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+        h1 { margin-bottom: 0.5rem; }
+        .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+        .drop-zone {
+            border: 2px dashed #475569; border-radius: 12px; padding: 3rem;
+            text-align: center; margin-bottom: 1.5rem; cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: #6366f1; }
+        .drop-zone p { color: #94a3b8; }
+        input[type="file"] { display: none; }
+        .controls { display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        button {
+            padding: 0.6rem 1.5rem; border: none; border-radius: 8px; font-size: 0.9rem;
+            cursor: pointer; font-weight: 600;
+        }
+        .btn-primary { background: #6366f1; color: white; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-secondary { background: #334155; color: #e2e8f0; }
+        .stats { display: flex; gap: 2rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .stat { background: #1e293b; padding: 1rem 1.5rem; border-radius: 8px; }
+        .stat-num { font-size: 1.5rem; font-weight: 700; color: #6366f1; }
+        .stat-label { font-size: 0.8rem; color: #94a3b8; }
+        .progress-bar { width: 100%; height: 8px; background: #1e293b; border-radius: 4px; margin-bottom: 1rem; overflow: hidden; }
+        .progress-fill { height: 100%; background: #6366f1; border-radius: 4px; transition: width 0.3s; width: 0%; }
+        #log { background: #1e293b; border-radius: 8px; padding: 1rem; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; line-height: 1.6; }
+        .log-success { color: #22c55e; }
+        .log-skip { color: #eab308; }
+        .log-error { color: #ef4444; }
+        .log-info { color: #94a3b8; }
+        .preview-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.8rem; }
+        .preview-table th, .preview-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #334155; text-align: left; }
+        .preview-table th { color: #94a3b8; font-weight: 600; }
+        .preview-table tr:hover { background: #1e293b; }
+        label { display: flex; align-items: center; gap: 0.5rem; color: #94a3b8; font-size: 0.85rem; cursor: pointer; }
+        input[type="checkbox"] { accent-color: #6366f1; }
+        select { padding: 0.4rem 0.6rem; background: #1e293b; border: 1px solid #475569; border-radius: 6px; color: #e2e8f0; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <h1>🎮 Import Playnite Library</h1>
+    <p class="subtitle">Upload your Playnite CSV export to migrate video games to OneToTen</p>
+
+    <div class="drop-zone" id="dropZone">
+        <p>📁 Drop your Playnite <strong>.csv</strong> here or click to browse</p>
+        <input type="file" id="fileInput" accept=".csv">
+    </div>
+
+    <div id="preview" style="display:none">
+        <div class="stats" id="stats"></div>
+
+        <div class="controls">
+            <label>Default status:
+                <select id="defaultStatus">
+                    <option value="completed">Completed</option>
+                    <option value="playing">Playing</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="dropped">Dropped</option>
+                </select>
+            </label>
+            <label>Default score:
+                <select id="defaultScore">
+                    <option value="0">0 (unrated)</option>
+                    <option value="5" selected>5</option>
+                    <option value="7">7</option>
+                </select>
+            </label>
+        </div>
+
+        <div style="max-height: 300px; overflow-y: auto; margin-bottom: 1.5rem;">
+            <table class="preview-table" id="previewTable">
+                <thead><tr><th></th><th>Name</th><th>Developer</th><th>Year</th><th>Platform</th><th>Source</th><th>Genres</th></tr></thead>
+                <tbody id="previewBody"></tbody>
+            </table>
+        </div>
+
+        <div class="controls">
+            <label><input type="checkbox" id="skipExisting" checked> Skip titles already in DB</label>
+        </div>
+        <div class="controls">
+            <button class="btn-primary" id="importBtn" disabled>Import All</button>
+            <button class="btn-secondary" id="clearBtn">Clear</button>
+            <span id="importStatus" style="color: #94a3b8; font-size: 0.85rem;"></span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div id="log"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+        import { getDatabase, ref, push, set, get } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB9xbxS4TTADWrs1oxT5ZbImiK0rtOgHpc",
+            authDomain: "one-to-ten-92b88.firebaseapp.com",
+            databaseURL: "https://one-to-ten-92b88-default-rtdb.firebaseio.com",
+            projectId: "one-to-ten-92b88",
+            storageBucket: "one-to-ten-92b88.firebasestorage.app",
+            messagingSenderId: "529395513518",
+            appId: "1:529395513518:web:5832a4804f09a0d78b953f",
+            measurementId: "G-R9Y96743YQ"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+
+        let parsedRows = [];
+        let currentUser = null;
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) {
+                log('Authenticated as ' + user.email, 'info');
+                document.getElementById('importBtn').disabled = false;
+            } else {
+                log('Not logged in — please log in.', 'error');
+                promptLogin();
+            }
+        });
+
+        function promptLogin() {
+            const email = prompt('Firebase email:');
+            if (!email) return;
+            const password = prompt('Firebase password:');
+            if (!password) return;
+            signInWithEmailAndPassword(auth, email, password)
+                .then(() => log('Logged in!', 'success'))
+                .catch(err => log('Login failed: ' + err.message, 'error'));
+        }
+
+        // Detect delimiter (tab or comma)
+        function detectDelimiter(firstLine) {
+            if (firstLine.includes('\t')) return '\t';
+            return ',';
+        }
+
+        // CSV/TSV Parser
+        function parseCSV(text) {
+            const lines = text.split('\n');
+            if (lines.length < 2) return [];
+            const delimiter = detectDelimiter(lines[0]);
+            const headers = parseLine(lines[0], delimiter);
+            const rows = [];
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                const values = parseLine(line, delimiter);
+                const row = {};
+                headers.forEach((h, idx) => row[h.trim()] = (values[idx] || '').trim());
+                rows.push(row);
+            }
+            return rows;
+        }
+
+        function parseLine(line, delimiter) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') {
+                    if (inQuotes && line[i + 1] === '"') {
+                        current += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (ch === delimiter && !inQuotes) {
+                    result.push(current);
+                    current = '';
+                } else {
+                    current += ch;
+                }
+            }
+            result.push(current);
+            return result;
+        }
+
+        // Map Playnite source to external link source
+        function mapSource(source) {
+            const s = (source || '').toLowerCase();
+            if (s.includes('steam')) return { source: 'steam', urlBase: 'https://store.steampowered.com' };
+            if (s.includes('epic')) return { source: 'epic', urlBase: 'https://store.epicgames.com' };
+            if (s.includes('gog')) return { source: 'gog', urlBase: 'https://gog.com' };
+            if (s.includes('ubisoft') || s.includes('uplay')) return { source: 'ubisoft', urlBase: 'https://store.ubi.com' };
+            if (s.includes('xbox') || s.includes('microsoft')) return { source: 'xbox', urlBase: 'https://xbox.com' };
+            if (s.includes('playstation') || s.includes('psn')) return { source: 'playstation', urlBase: 'https://store.playstation.com' };
+            return null;
+        }
+
+        // Extract year from release date
+        function extractYear(dateStr) {
+            if (!dateStr) return '';
+            const match = dateStr.match(/\d{4}/);
+            return match ? match[0] : '';
+        }
+
+        // File handling
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+        function handleFile(file) {
+            if (!file.name.endsWith('.csv')) {
+                alert('Please upload a .csv file');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const rows = parseCSV(e.target.result);
+                if (rows.length === 0) {
+                    alert('No data found in CSV');
+                    return;
+                }
+                parsedRows = rows.map(r => ({
+                    name: r['Name'] || r['name'] || '',
+                    developer: r['Developers'] || r['developers'] || '',
+                    publisher: r['Publishers'] || r['publishers'] || '',
+                    genres: r['Genres'] || r['genres'] || '',
+                    releaseDate: r['Release Date'] || r['release date'] || '',
+                    platforms: r['Platforms'] || r['platforms'] || '',
+                    sources: r['Sources'] || r['sources'] || r['Source'] || r['source'] || '',
+                    installed: r['Installed'] || r['installed'] || ''
+                })).filter(r => r.name);
+
+                showPreview();
+            };
+            reader.readAsText(file);
+        }
+
+        function showPreview() {
+            document.getElementById('preview').style.display = 'block';
+            const total = parsedRows.length;
+            const withDev = parsedRows.filter(r => r.developer).length;
+            const withYear = parsedRows.filter(r => extractYear(r.releaseDate)).length;
+
+            document.getElementById('stats').innerHTML = `
+                <div class="stat"><div class="stat-num">${total}</div><div class="stat-label">Total Games</div></div>
+                <div class="stat"><div class="stat-num">${withDev}</div><div class="stat-label">With Developer</div></div>
+                <div class="stat"><div class="stat-num">${withYear}</div><div class="stat-label">With Year</div></div>
+            `;
+
+            const tbody = document.getElementById('previewBody');
+            tbody.innerHTML = parsedRows.slice(0, 100).map((r, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td>${esc(r.name)}</td>
+                    <td>${esc(r.developer)}</td>
+                    <td>${extractYear(r.releaseDate)}</td>
+                    <td>${esc(r.platforms)}</td>
+                    <td>${esc(r.sources)}</td>
+                    <td>${esc(r.genres)}</td>
+                </tr>
+            `).join('');
+            if (parsedRows.length > 100) {
+                tbody.innerHTML += `<tr><td colspan="7" style="color:#94a3b8; text-align:center;">... and ${parsedRows.length - 100} more</td></tr>`;
+            }
+
+            log(`Parsed ${parsedRows.length} games from CSV`, 'info');
+        }
+
+        function esc(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // Import
+        document.getElementById('importBtn').addEventListener('click', startImport);
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            parsedRows = [];
+            document.getElementById('preview').style.display = 'none';
+            document.getElementById('log').innerHTML = '';
+            fileInput.value = '';
+        });
+
+        async function startImport() {
+            if (!currentUser) {
+                alert('Please log in first');
+                return;
+            }
+
+            const importBtn = document.getElementById('importBtn');
+            importBtn.disabled = true;
+            const skipExisting = document.getElementById('skipExisting').checked;
+            const defaultStatus = document.getElementById('defaultStatus').value;
+            const defaultScore = parseInt(document.getElementById('defaultScore').value);
+            const progressFill = document.getElementById('progressFill');
+            const statusEl = document.getElementById('importStatus');
+
+            let existingTitles = new Set();
+            if (skipExisting) {
+                log('Loading existing reviews...', 'info');
+                const snapshot = await get(ref(db, 'reviews'));
+                const existing = snapshot.val() || {};
+                Object.values(existing).forEach(r => {
+                    existingTitles.add(r.title?.toLowerCase().trim());
+                });
+                log(`Found ${existingTitles.size} existing reviews in DB`, 'info');
+            }
+
+            let imported = 0, skipped = 0, errors = 0;
+            const total = parsedRows.length;
+
+            for (let i = 0; i < parsedRows.length; i++) {
+                const r = parsedRows[i];
+                const pct = ((i + 1) / total * 100).toFixed(1);
+                progressFill.style.width = pct + '%';
+                statusEl.textContent = `${i + 1} / ${total} (${pct}%)`;
+
+                if (skipExisting && existingTitles.has(r.name.toLowerCase().trim())) {
+                    log(`⏭ Skipped (exists): ${r.name}`, 'skip');
+                    skipped++;
+                    continue;
+                }
+
+                const year = extractYear(r.releaseDate);
+                const genres = r.genres ? r.genres.split(',').map(g => g.trim()).filter(Boolean).slice(0, 5) : [];
+                const sourceInfo = mapSource(r.sources);
+
+                const review = {
+                    title: r.name,
+                    type: 'videogame',
+                    score: defaultScore,
+                    status: defaultStatus,
+                    review: '',
+                    reviewLang: 'en',
+                    tags: genres,
+                    meta: {},
+                    externalLinks: [],
+                    imageUrl: '',
+                    dateConsumed: '',
+                    createdAt: Date.now()
+                };
+
+                if (r.developer) review.meta.developer = r.developer;
+                if (year) review.meta.year = year;
+                if (r.platforms) review.meta.platform = r.platforms;
+                if (sourceInfo) {
+                    review.externalLinks.push({ url: sourceInfo.urlBase, source: sourceInfo.source });
+                }
+
+                try {
+                    const newRef = push(ref(db, 'reviews'));
+                    await set(newRef, review);
+                    imported++;
+                    log(`✅ Imported: ${r.name}${r.developer ? ` (${r.developer})` : ''}${year ? ` [${year}]` : ''}`, 'success');
+                } catch (err) {
+                    errors++;
+                    log(`❌ Error: ${r.name} — ${err.message}`, 'error');
+                }
+
+                if (i % 50 === 49) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
+
+            log(`\n━━━ Import Complete ━━━`, 'info');
+            log(`✅ Imported: ${imported}`, 'success');
+            if (skipped) log(`⏭ Skipped: ${skipped}`, 'skip');
+            if (errors) log(`❌ Errors: ${errors}`, 'error');
+
+            statusEl.textContent = `Done! ${imported} imported, ${skipped} skipped, ${errors} errors`;
+            importBtn.disabled = false;
+        }
+
+        function log(msg, type = 'info') {
+            const logEl = document.getElementById('log');
+            const line = document.createElement('div');
+            line.className = `log-${type}`;
+            line.textContent = msg;
+            logEl.appendChild(line);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    </script>
+</body>
+</html>
