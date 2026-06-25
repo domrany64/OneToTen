@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cleanup Bad Import</title>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+        button { padding: 0.6rem 1.5rem; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; font-weight: 600; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:disabled { opacity: 0.5; }
+        #log { background: #1e293b; border-radius: 8px; padding: 1rem; margin-top: 1rem; max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; line-height: 1.6; }
+        .log-info { color: #94a3b8; } .log-success { color: #22c55e; } .log-error { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <h1>🧹 Cleanup: Delete Bad Playnite Import</h1>
+    <p style="color:#94a3b8; margin: 1rem 0;">This will delete all <strong>videogame</strong> reviews with <strong>score=5</strong> and <strong>status=completed</strong> (the bulk-imported ones).</p>
+    <button class="btn-danger" id="deleteBtn" disabled>Delete Bad Imports</button>
+    <div id="log"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+        import { getDatabase, ref, get, remove } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+
+        const app = initializeApp({
+            apiKey: "AIzaSyB9xbxS4TTADWrs1oxT5ZbImiK0rtOgHpc",
+            authDomain: "one-to-ten-92b88.firebaseapp.com",
+            databaseURL: "https://one-to-ten-92b88-default-rtdb.firebaseio.com",
+            projectId: "one-to-ten-92b88",
+            storageBucket: "one-to-ten-92b88.firebasestorage.app",
+            messagingSenderId: "529395513518",
+            appId: "1:529395513518:web:5832a4804f09a0d78b953f"
+        });
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+
+        const logEl = document.getElementById('log');
+        function log(msg, cls = 'info') {
+            const d = document.createElement('div');
+            d.className = 'log-' + cls;
+            d.textContent = msg;
+            logEl.appendChild(d);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        onAuthStateChanged(auth, user => {
+            if (user) {
+                log('Authenticated as ' + user.email);
+                document.getElementById('deleteBtn').disabled = false;
+            } else {
+                const email = prompt('Firebase email:');
+                if (!email) return;
+                const pw = prompt('Firebase password:');
+                if (!pw) return;
+                signInWithEmailAndPassword(auth, email, pw).catch(e => log('Login failed: ' + e.message, 'error'));
+            }
+        });
+
+        document.getElementById('deleteBtn').addEventListener('click', async () => {
+            document.getElementById('deleteBtn').disabled = true;
+            log('Scanning reviews...');
+            const snap = await get(ref(db, 'reviews'));
+            const all = snap.val() || {};
+            const toDelete = [];
+            for (const [id, r] of Object.entries(all)) {
+                if (r.type === 'videogame' && r.score === 5 && r.status === 'completed') {
+                    toDelete.push({ id, title: r.title });
+                }
+            }
+            log(`Found ${toDelete.length} videogame reviews with score=5 & status=completed`);
+            if (toDelete.length === 0) { log('Nothing to delete!'); return; }
+
+            for (const item of toDelete) {
+                try {
+                    await remove(ref(db, 'reviews/' + item.id));
+                    log(`🗑 Deleted: ${item.title}`, 'success');
+                } catch (e) {
+                    log(`❌ Failed: ${item.title} — ${e.message}`, 'error');
+                }
+            }
+            log(`\n✅ Done! Deleted ${toDelete.length} reviews.`, 'success');
+        });
+    </script>
+</body>
+</html>

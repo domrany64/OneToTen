@@ -58,27 +58,9 @@
     <div id="preview" style="display:none">
         <div class="stats" id="stats"></div>
 
-        <div class="controls">
-            <label>Default status:
-                <select id="defaultStatus">
-                    <option value="completed">Completed</option>
-                    <option value="playing">Playing</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="dropped">Dropped</option>
-                </select>
-            </label>
-            <label>Default score:
-                <select id="defaultScore">
-                    <option value="0">0 (unrated)</option>
-                    <option value="5" selected>5</option>
-                    <option value="7">7</option>
-                </select>
-            </label>
-        </div>
-
         <div style="max-height: 300px; overflow-y: auto; margin-bottom: 1.5rem;">
             <table class="preview-table" id="previewTable">
-                <thead><tr><th></th><th>Name</th><th>Developer</th><th>Year</th><th>Platform</th><th>Source</th><th>Genres</th></tr></thead>
+                <thead><tr><th></th><th>Name</th><th>Developer</th><th>Year</th><th>Platform</th><th>Source</th><th>Status</th><th>Score</th></tr></thead>
                 <tbody id="previewBody"></tbody>
             </table>
         </div>
@@ -206,6 +188,25 @@
             return match ? match[0] : '';
         }
 
+        // Map Playnite User Score (0-100 or 1-10) to 0-10
+        function mapScore(scoreStr) {
+            const val = parseInt(scoreStr);
+            if (isNaN(val)) return 0;
+            if (val > 10) return Math.round(val / 10); // 0-100 → 0-10
+            return val; // already 0-10
+        }
+
+        // Map Playnite Completion Status to OneToTen status
+        function mapCompletionStatus(status) {
+            const s = (status || '').toLowerCase().trim();
+            if (s === 'completed' || s === 'beaten') return 'completed';
+            if (s === 'playing') return 'in-progress';
+            if (s === 'abandoned') return 'dropped';
+            if (s === 'on hold') return 'in-progress';
+            if (s === 'played') return 'completed';
+            return 'completed'; // default
+        }
+
         // File handling
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
@@ -240,24 +241,34 @@
                     releaseDate: r['Release Date'] || r['release date'] || '',
                     platforms: r['Platforms'] || r['platforms'] || '',
                     sources: r['Sources'] || r['sources'] || r['Source'] || r['source'] || '',
-                    installed: r['Installed'] || r['installed'] || ''
+                    completionStatus: r['Completion Status'] || r['completion status'] || '',
+                    userScore: r['User Score'] || r['user score'] || ''
                 })).filter(r => r.name);
 
-                showPreview();
+                // Skip "Not Played" games
+                const before = parsedRows.length;
+                parsedRows = parsedRows.filter(r => {
+                    const status = r.completionStatus.toLowerCase().trim();
+                    return status !== 'not played' && status !== 'plan to play';
+                });
+                const skippedNotPlayed = before - parsedRows.length;
+
+                showPreview(skippedNotPlayed);
             };
             reader.readAsText(file);
         }
 
-        function showPreview() {
+        function showPreview(skippedNotPlayed = 0) {
             document.getElementById('preview').style.display = 'block';
             const total = parsedRows.length;
-            const withDev = parsedRows.filter(r => r.developer).length;
+            const withScore = parsedRows.filter(r => r.userScore).length;
             const withYear = parsedRows.filter(r => extractYear(r.releaseDate)).length;
 
             document.getElementById('stats').innerHTML = `
-                <div class="stat"><div class="stat-num">${total}</div><div class="stat-label">Total Games</div></div>
-                <div class="stat"><div class="stat-num">${withDev}</div><div class="stat-label">With Developer</div></div>
+                <div class="stat"><div class="stat-num">${total}</div><div class="stat-label">Games to Import</div></div>
+                <div class="stat"><div class="stat-num">${withScore}</div><div class="stat-label">With Score</div></div>
                 <div class="stat"><div class="stat-num">${withYear}</div><div class="stat-label">With Year</div></div>
+                ${skippedNotPlayed > 0 ? `<div class="stat"><div class="stat-num">${skippedNotPlayed}</div><div class="stat-label">Skipped (Not Played)</div></div>` : ''}
             `;
 
             const tbody = document.getElementById('previewBody');
@@ -269,14 +280,15 @@
                     <td>${extractYear(r.releaseDate)}</td>
                     <td>${esc(r.platforms)}</td>
                     <td>${esc(r.sources)}</td>
-                    <td>${esc(r.genres)}</td>
+                    <td>${esc(r.completionStatus)}</td>
+                    <td>${r.userScore ? mapScore(r.userScore) + '/10' : '-'}</td>
                 </tr>
             `).join('');
             if (parsedRows.length > 100) {
-                tbody.innerHTML += `<tr><td colspan="7" style="color:#94a3b8; text-align:center;">... and ${parsedRows.length - 100} more</td></tr>`;
+                tbody.innerHTML += `<tr><td colspan="8" style="color:#94a3b8; text-align:center;">... and ${parsedRows.length - 100} more</td></tr>`;
             }
 
-            log(`Parsed ${parsedRows.length} games from CSV`, 'info');
+            log(`Parsed ${total} games (skipped ${skippedNotPlayed} Not Played)`, 'info');
         }
 
         function esc(str) {
@@ -303,8 +315,6 @@
             const importBtn = document.getElementById('importBtn');
             importBtn.disabled = true;
             const skipExisting = document.getElementById('skipExisting').checked;
-            const defaultStatus = document.getElementById('defaultStatus').value;
-            const defaultScore = parseInt(document.getElementById('defaultScore').value);
             const progressFill = document.getElementById('progressFill');
             const statusEl = document.getElementById('importStatus');
 
@@ -337,12 +347,14 @@
                 const year = extractYear(r.releaseDate);
                 const genres = r.genres ? r.genres.split(',').map(g => g.trim()).filter(Boolean).slice(0, 5) : [];
                 const sourceInfo = mapSource(r.sources);
+                const score = r.userScore ? mapScore(r.userScore) : 0;
+                const status = mapCompletionStatus(r.completionStatus);
 
                 const review = {
                     title: r.name,
                     type: 'videogame',
-                    score: defaultScore,
-                    status: defaultStatus,
+                    score: score,
+                    status: status,
                     review: '',
                     reviewLang: 'en',
                     tags: genres,
