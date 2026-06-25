@@ -137,20 +137,36 @@
         document.getElementById('cleanupBtn').addEventListener('click', async () => {
             if (!confirm('This will delete all review data that is NOT under a user UID path. Continue?')) return;
             document.getElementById('cleanupBtn').disabled = true;
+            log('Reading /reviews...');
 
-            const snap = await get(ref(db, 'reviews'));
-            const data = snap.val() || {};
-            let deleted = 0;
+            try {
+                const snap = await get(ref(db, 'reviews'));
+                const data = snap.val() || {};
+                const keys = Object.keys(data);
+                log(`Found ${keys.length} top-level keys under /reviews`);
 
-            for (const [key, value] of Object.entries(data)) {
-                // If it's a flat review (has 'title'), delete it
-                if (value && value.title) {
-                    await remove(ref(db, `reviews/${key}`));
-                    deleted++;
+                let deleted = 0;
+                for (const [key, value] of Object.entries(data)) {
+                    // Skip UID-keyed entries (they contain nested reviews, not a title directly)
+                    if (value && typeof value === 'object' && !value.title) {
+                        log(`Skipping ${key} (looks like a UID node)`, 'skip');
+                        continue;
+                    }
+                    // It's a flat review - delete it
+                    log(`Deleting flat review: ${key}...`);
+                    try {
+                        await remove(ref(db, `reviews/${key}`));
+                        deleted++;
+                    } catch (e) {
+                        log(`Failed to delete ${key}: ${e.message}`, 'error');
+                    }
                 }
+
+                log(`🧹 Cleaned up ${deleted} old flat reviews`, 'success');
+            } catch (e) {
+                log(`❌ Error: ${e.message}`, 'error');
             }
 
-            log(`🧹 Cleaned up ${deleted} old flat reviews`, 'success');
             document.getElementById('cleanupBtn').disabled = false;
         });
     </script>
