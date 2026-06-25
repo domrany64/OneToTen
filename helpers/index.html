@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OneToTen — Helper Tools</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container { max-width: 700px; margin: 0 auto; }
+        h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+        .back-link { color: #818cf8; text-decoration: none; display: inline-block; margin-bottom: 1.5rem; font-size: 0.9rem; }
+        .back-link:hover { text-decoration: underline; }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: #6366f1; }
+        .card h2 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+        .card h2 a { color: #a5b4fc; text-decoration: none; }
+        .card h2 a:hover { text-decoration: underline; }
+        .card p { color: #94a3b8; font-size: 0.9rem; line-height: 1.5; }
+        .tag { display: inline-block; background: #334155; color: #cbd5e1; font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 4px; margin-top: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a class="back-link" href="../">← Back to OneToTen</a>
+        <h1>Helper Tools</h1>
+        <p class="subtitle">Utility pages for importing, migrating, and managing your reviews.</p>
+
+        <div class="card">
+            <h2><a href="../import-imdb.html">Import IMDb Ratings</a></h2>
+            <p>Bulk import your IMDb ratings from a CSV export. Automatically maps IMDb scores to your 1–10 scale and sets the type to Movie or TV Show.</p>
+            <span class="tag">Import</span>
+        </div>
+
+        <div class="card">
+            <h2><a href="../import-playnite.html">Import Playnite Library</a></h2>
+            <p>Bulk import your Playnite game library from a CSV export. Uses Completion Status and User Score columns. Skips games marked "Not Played".</p>
+            <span class="tag">Import</span>
+        </div>
+
+        <div class="card">
+            <h2><a href="../cleanup-import.html">Cleanup Bad Imports</a></h2>
+            <p>Delete reviews that were added via bulk import and don't have valid data. Useful for fixing botched imports without affecting manually-added reviews.</p>
+            <span class="tag">Maintenance</span>
+        </div>
+
+        <div class="card">
+            <h2><a href="../migrate-users.html">Migrate to Per-User Structure</a></h2>
+            <p>One-time migration tool that moves reviews from the old flat structure (<code>/reviews/{id}</code>) to the per-user structure (<code>/reviews/{uid}/{id}</code>). Only needed if you had data before multi-user support was added.</p>
+            <span class="tag">Migration</span>
+        </div>
+    </div>
+</body>
+</html>
