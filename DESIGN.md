@@ -218,7 +218,7 @@ When adding a review, users can search by title to auto-fill metadata from exter
 | Movie | TMDB (The Movie Database) | Year, director, actors, studio, poster |
 | TV Show | TMDB | Year range, creator, actors, network, seasons, episodes, status, poster |
 | Video Game | RAWG | Year, developer, platform, cover image |
-| Book | Google Books | Year, author, cover image |
+| Book | Open Library | Year, author, cover image |
 
 ### Flow
 1. User selects type and enters title
@@ -230,7 +230,7 @@ When adding a review, users can search by title to auto-fill metadata from exter
 ### API Keys
 - TMDB: Free tier, 1M requests/month
 - RAWG: Free tier, 20,000 requests/month
-- Google Books: Free, no key required
+- Open Library: Free, no key required
 
 ---
 
@@ -238,8 +238,9 @@ When adding a review, users can search by title to auto-fill metadata from exter
 
 - Standalone page (`import-bgg.html`)
 - Upload BGG collection CSV export (from BGG profile → Collection → Export)
-- Maps fields: objectname → title, rating → score, yearpublished → year, min/maxplayers → playerCount
-- Option to import only rated games or all
+- Maps fields: objectname → title, rating → score (falls back to community average rounded), yearpublished → year, min/maxplayers → playerCount
+- Option to import only rated games or all owned games
+- Configurable default score for unrated games
 - Skips duplicates by title match
 - Adds BGG link as external link
 

@@ -28,7 +28,7 @@ A personal media review website where you rate and review everything you play, r
 - **IMDb import tool** — Bulk import ratings from IMDb CSV export
 - **BGG import tool** — Bulk import board game collection from BoardGameGeek CSV export
 - **Playnite import tool** — Bulk import game library from Playnite CSV export
-- **Metadata auto-fetch** — Search TMDB (movies/TV), RAWG (games), or Google Books (books) by title; auto-fills year, director, actors, poster, and more
+- **Metadata auto-fetch** — Search TMDB (movies/TV), RAWG (games), or Open Library (books) by title; auto-fills year, director, actors, poster, and more
 - **Multi-user support** — Each account stores reviews separately; shared links work across users
 - **Bulk operations** — Select multiple reviews to bulk modify or delete
 - **Responsive** — Works on desktop, tablet, and mobile with adaptive sidebar layout
