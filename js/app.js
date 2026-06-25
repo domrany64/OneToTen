@@ -115,6 +115,11 @@ const SOURCE_LABELS = {
     bgg: 'BoardGameGeek',
     igdb: 'IGDB',
     steam: 'Steam',
+    epic: 'Epic Games',
+    gog: 'GOG',
+    ubisoft: 'Ubisoft',
+    xbox: 'Xbox',
+    playstation: 'PlayStation',
     goodreads: 'Goodreads',
     openlibrary: 'OpenLibrary',
     wikipedia: 'Wikipedia',
@@ -1029,7 +1034,12 @@ function detectSource(url) {
     if (url.includes('thetvdb.com')) return 'tvdb';
     if (url.includes('boardgamegeek.com')) return 'bgg';
     if (url.includes('igdb.com')) return 'igdb';
-    if (url.includes('store.steampowered.com')) return 'steam';
+    if (url.includes('store.steampowered.com') || url.includes('steampowered.com')) return 'steam';
+    if (url.includes('epicgames.com') || url.includes('store.epicgames.com')) return 'epic';
+    if (url.includes('gog.com')) return 'gog';
+    if (url.includes('ubisoft.com') || url.includes('store.ubi.com')) return 'ubisoft';
+    if (url.includes('xbox.com') || url.includes('microsoft.com/store')) return 'xbox';
+    if (url.includes('playstation.com') || url.includes('store.playstation.com')) return 'playstation';
     if (url.includes('goodreads.com')) return 'goodreads';
     if (url.includes('openlibrary.org')) return 'openlibrary';
     if (url.includes('wikipedia.org')) return 'wikipedia';
