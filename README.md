@@ -26,8 +26,9 @@ A personal media review website where you rate and review everything you play, r
 - **Authentication** — Firebase Auth protects write operations (login required to add/edit/delete)
 - **Automated backups** — Weekly GitHub Actions workflow backs up the database
 - **IMDb import tool** — Bulk import ratings from IMDb CSV export
+- **BGG import tool** — Bulk import board game collection from BoardGameGeek CSV export
 - **Playnite import tool** — Bulk import game library from Playnite CSV export
-- **Metadata auto-fetch** — Search TMDB (movies/TV) or RAWG (games) by title; auto-fills year, director, actors, poster, and more
+- **Metadata auto-fetch** — Search TMDB (movies/TV), RAWG (games), or Google Books (books) by title; auto-fills year, director, actors, poster, and more
 - **Multi-user support** — Each account stores reviews separately; shared links work across users
 - **Bulk operations** — Select multiple reviews to bulk modify or delete
 - **Responsive** — Works on desktop, tablet, and mobile with adaptive sidebar layout
@@ -44,6 +45,7 @@ A personal media review website where you rate and review everything you play, r
 
 - **Helpers page:** [/helpers/](https://domrany64.github.io/OneToTen/helpers/) — Index of all helper tools
 - **Import IMDb:** [/import-imdb.html](https://domrany64.github.io/OneToTen/import-imdb.html) — Bulk import your IMDb ratings via CSV export
+- **Import BGG:** [/import-bgg.html](https://domrany64.github.io/OneToTen/import-bgg.html) — Bulk import your BoardGameGeek collection via CSV
 - **Import Playnite:** [/import-playnite.html](https://domrany64.github.io/OneToTen/import-playnite.html) — Bulk import your Playnite game library via CSV
 - **Cleanup Imports:** [/cleanup-import.html](https://domrany64.github.io/OneToTen/cleanup-import.html) — Remove bad bulk imports
 - **Migrate Users:** [/migrate-users.html](https://domrany64.github.io/OneToTen/migrate-users.html) — One-time migration to per-user data structure

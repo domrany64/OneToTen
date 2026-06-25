@@ -1401,7 +1401,7 @@ function updateReviewTextDirection() {
     }
 }
 
-// ===== Metadata Auto-Fetch (TMDB for movies/TV, RAWG for games) =====
+// ===== Metadata Auto-Fetch (TMDB for movies/TV, RAWG for games, Google Books for books) =====
 const TMDB_API_KEY = '0de3409b5270f98494b552581059ae03';
 const RAWG_API_KEY = 'e35ff8888fb44ea1a700bbf80f59ae5e';
 
@@ -1414,7 +1414,7 @@ searchMetaBtn.addEventListener('click', () => searchMetadata());
 document.getElementById('reviewTitle').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         const type = document.getElementById('reviewType').value;
-        if (['movie', 'tvshow', 'videogame'].includes(type)) {
+        if (['movie', 'tvshow', 'videogame', 'book'].includes(type)) {
             e.preventDefault();
             searchMetadata();
         }
@@ -1428,8 +1428,8 @@ async function searchMetadata() {
     if (!title) { showToast('Enter a title to search'); return; }
     if (!type) { showToast('Select a type first'); return; }
 
-    if (!['movie', 'tvshow', 'videogame'].includes(type)) {
-        showToast('Auto-fetch is available for Movies, TV Shows, and Video Games');
+    if (!['movie', 'tvshow', 'videogame', 'book'].includes(type)) {
+        showToast('Auto-fetch is available for Movies, TV Shows, Video Games, and Books');
         return;
     }
 
@@ -1444,6 +1444,8 @@ async function searchMetadata() {
             results = await searchTMDB(title, 'tv');
         } else if (type === 'videogame') {
             results = await searchRAWG(title);
+        } else if (type === 'book') {
+            results = await searchGoogleBooks(title);
         }
 
         if (results.length === 0) {
@@ -1543,6 +1545,35 @@ async function fetchRAWGDetails(rawgId) {
     return await resp.json();
 }
 
+async function searchGoogleBooks(query) {
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=8`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('Google Books request failed');
+    const data = await resp.json();
+
+    return (data.items || []).map(item => {
+        const info = item.volumeInfo || {};
+        const authors = (info.authors || []).join(', ');
+        const year = (info.publishedDate || '').substring(0, 4);
+        const image = info.imageLinks?.thumbnail || '';
+
+        return {
+            title: info.title || '',
+            detail: [authors, year].filter(Boolean).join(' · '),
+            image,
+            meta: {
+                year,
+                author: authors,
+                publisher: info.publisher || '',
+                imageUrl: info.imageLinks?.thumbnail?.replace('&edge=curl', '') || '',
+                googleBooksId: item.id,
+                pageCount: info.pageCount ? String(info.pageCount) : '',
+                description: (info.description || '').substring(0, 200)
+            }
+        };
+    });
+}
+
 async function applyMetadata(result, type) {
     const meta = result.meta;
     document.getElementById('reviewTitle').value = result.title;
@@ -1606,6 +1637,17 @@ async function applyMetadata(result, type) {
 
         if (details.background_image) {
             document.getElementById('imageUrl').value = details.background_image;
+        }
+    } else if (type === 'book') {
+        const metaData = {
+            author: meta.author || '',
+            year: meta.year || ''
+        };
+
+        renderTypeFields(type, metaData);
+
+        if (meta.imageUrl) {
+            document.getElementById('imageUrl').value = meta.imageUrl;
         }
     }
 
