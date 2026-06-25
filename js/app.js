@@ -86,6 +86,8 @@ let filterStatus = '';
 let filterCreator = '';
 let filterYearFrom = '';
 let filterYearTo = '';
+let bulkMode = false;
+let selectedIds = new Set();
 
 // ===== DOM Elements =====
 const mainContent = document.getElementById('mainContent');
@@ -461,12 +463,23 @@ function renderReviewList() {
             <div class="list-content">
                 <div class="reviews-header">
                     <h1>${typeName} (${reviews.length})</h1>
-                    <input type="text" class="search-input" id="searchInput" 
-                        placeholder="Search title, author, tag..." value="${escapeHtml(searchQuery)}">
+                    <div class="reviews-header-actions">
+                        ${isLoggedIn() ? `<button class="btn btn-secondary btn-sm" id="bulkToggleBtn">${bulkMode ? 'Cancel' : 'Select'}</button>` : ''}
+                        <input type="text" class="search-input" id="searchInput" 
+                            placeholder="Search title, author, tag..." value="${escapeHtml(searchQuery)}">
+                    </div>
                 </div>
+                ${bulkMode ? `
+                    <div class="bulk-actions-bar">
+                        <label class="bulk-select-all"><input type="checkbox" id="bulkSelectAll"> Select All (${reviews.length})</label>
+                        <span class="bulk-count" id="bulkCount">${selectedIds.size} selected</span>
+                        <button class="btn btn-primary btn-sm" id="bulkModifyBtn" disabled>Modify</button>
+                        <button class="btn btn-danger btn-sm" id="bulkDeleteBtn" disabled>Delete</button>
+                    </div>
+                ` : ''}
                 ${reviews.length === 0 ? renderEmptyState() : `
                     <div class="review-grid">
-                        ${reviews.map(renderCard).join('')}
+                        ${reviews.map(r => renderCard(r, bulkMode)).join('')}
                     </div>
                 `}
             </div>
@@ -530,20 +543,78 @@ function renderReviewList() {
 
     // Card click handlers
     document.querySelectorAll('.review-card').forEach(card => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', (e) => {
+            if (bulkMode) {
+                e.stopPropagation();
+                const id = card.dataset.id;
+                if (selectedIds.has(id)) selectedIds.delete(id);
+                else selectedIds.add(id);
+                renderReviewList();
+                return;
+            }
             navigate(`#/review/${card.dataset.id}`);
         });
     });
+
+    // Bulk checkboxes
+    document.querySelectorAll('.bulk-checkbox').forEach(cb => {
+        cb.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = cb.dataset.id;
+            if (cb.checked) selectedIds.add(id);
+            else selectedIds.delete(id);
+            updateBulkUI();
+        });
+    });
+
+    // Bulk toggle button
+    const bulkToggleBtn = document.getElementById('bulkToggleBtn');
+    if (bulkToggleBtn) {
+        bulkToggleBtn.addEventListener('click', () => {
+            bulkMode = !bulkMode;
+            selectedIds.clear();
+            renderReviewList();
+        });
+    }
+
+    // Bulk select all
+    const selectAllCb = document.getElementById('bulkSelectAll');
+    if (selectAllCb) {
+        selectAllCb.addEventListener('change', () => {
+            const allCards = document.querySelectorAll('.review-card');
+            if (selectAllCb.checked) {
+                allCards.forEach(c => selectedIds.add(c.dataset.id));
+            } else {
+                selectedIds.clear();
+            }
+            renderReviewList();
+        });
+    }
+
+    // Bulk modify
+    const bulkModifyBtn = document.getElementById('bulkModifyBtn');
+    if (bulkModifyBtn) {
+        bulkModifyBtn.addEventListener('click', showBulkModifyModal);
+    }
+
+    // Bulk delete
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.addEventListener('click', bulkDelete);
+    }
+
+    updateBulkUI();
 }
 
-function renderCard(review) {
+function renderCard(review, showCheckbox = false) {
     const config = TYPE_CONFIG[review.type] || { icon: '❓', label: 'Unknown' };
     const imageHtml = review.imageUrl
         ? `<img class="card-image" src="${escapeHtml(review.imageUrl)}" alt="${escapeHtml(review.title)}" loading="lazy">`
         : `<div class="card-image-placeholder">${config.icon}</div>`;
 
     return `
-        <div class="review-card" data-id="${review.id}">
+        <div class="review-card ${showCheckbox ? 'bulk-selectable' : ''} ${selectedIds.has(review.id) ? 'bulk-selected' : ''}" data-id="${review.id}">
+            ${showCheckbox ? `<input type="checkbox" class="bulk-checkbox" data-id="${review.id}" ${selectedIds.has(review.id) ? 'checked' : ''}>` : ''}
             ${imageHtml}
             <div class="card-body">
                 <div class="card-top">
@@ -570,6 +641,75 @@ function renderEmptyState() {
             <p>Add your first review using the button above.</p>
         </div>
     `;
+}
+
+// ===== Bulk Actions =====
+function updateBulkUI() {
+    const countEl = document.getElementById('bulkCount');
+    const modBtn = document.getElementById('bulkModifyBtn');
+    const delBtn = document.getElementById('bulkDeleteBtn');
+    if (countEl) countEl.textContent = `${selectedIds.size} selected`;
+    if (modBtn) modBtn.disabled = selectedIds.size === 0;
+    if (delBtn) delBtn.disabled = selectedIds.size === 0;
+}
+
+async function bulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} reviews? This cannot be undone.`)) return;
+
+    let deleted = 0;
+    for (const id of selectedIds) {
+        try {
+            await remove(ref(db, 'reviews/' + id));
+            deleted++;
+        } catch (e) {
+            console.error('Delete failed:', id, e);
+        }
+    }
+    showToast(`Deleted ${deleted} reviews`);
+    selectedIds.clear();
+    bulkMode = false;
+}
+
+function showBulkModifyModal() {
+    if (selectedIds.size === 0) return;
+    const overlay = document.getElementById('bulkModifyOverlay');
+    overlay.classList.add('active');
+    document.getElementById('bulkModifyCount').textContent = selectedIds.size;
+}
+
+function hideBulkModifyModal() {
+    document.getElementById('bulkModifyOverlay').classList.remove('active');
+}
+
+async function applyBulkModify() {
+    const field = document.getElementById('bulkField').value;
+    const value = document.getElementById('bulkValue').value.trim();
+    if (!field) { showToast('Select a field'); return; }
+
+    const updates = {};
+    for (const id of selectedIds) {
+        if (field === 'score') {
+            updates[`reviews/${id}/score`] = parseInt(value) || 0;
+        } else if (field === 'status') {
+            updates[`reviews/${id}/status`] = value;
+        } else if (field === 'tags') {
+            updates[`reviews/${id}/tags`] = value.split(',').map(t => t.trim()).filter(Boolean);
+        } else {
+            // meta fields
+            updates[`reviews/${id}/meta/${field}`] = value;
+        }
+    }
+
+    try {
+        await update(ref(db), updates);
+        showToast(`Updated ${selectedIds.size} reviews`);
+        hideBulkModifyModal();
+        selectedIds.clear();
+        bulkMode = false;
+    } catch (e) {
+        showToast('Error: ' + e.message);
+    }
 }
 
 // ===== Render: Single Review =====
@@ -1231,6 +1371,8 @@ window.handleLogin = handleLogin;
 window.hideLoginModal = hideLoginModal;
 window.removeLinkRow = removeLinkRow;
 window.toggleYearCalendar = toggleYearCalendar;
+window.hideBulkModifyModal = hideBulkModifyModal;
+window.applyBulkModify = applyBulkModify;
 
 // ===== Init =====
 handleRoute();
