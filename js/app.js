@@ -1401,6 +1401,217 @@ function updateReviewTextDirection() {
     }
 }
 
+// ===== Metadata Auto-Fetch (TMDB for movies/TV, RAWG for games) =====
+const TMDB_API_KEY = '559a900cca85b0bab2f8da52d3540e72';
+const RAWG_API_KEY = '77ef246fd3a44a2e8bab3e8d8a62e498';
+
+const searchMetaBtn = document.getElementById('searchMetaBtn');
+const searchResultsContainer = document.getElementById('searchResults');
+
+searchMetaBtn.addEventListener('click', () => searchMetadata());
+
+// Also allow Enter in title field to trigger search if type supports it
+document.getElementById('reviewTitle').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        const type = document.getElementById('reviewType').value;
+        if (['movie', 'tvshow', 'videogame'].includes(type)) {
+            e.preventDefault();
+            searchMetadata();
+        }
+    }
+});
+
+async function searchMetadata() {
+    const title = document.getElementById('reviewTitle').value.trim();
+    const type = document.getElementById('reviewType').value;
+
+    if (!title) { showToast('Enter a title to search'); return; }
+    if (!type) { showToast('Select a type first'); return; }
+
+    if (!['movie', 'tvshow', 'videogame'].includes(type)) {
+        showToast('Auto-fetch is available for Movies, TV Shows, and Video Games');
+        return;
+    }
+
+    searchResultsContainer.style.display = 'block';
+    searchResultsContainer.innerHTML = '<div class="sr-loading">Searching...</div>';
+
+    try {
+        let results = [];
+        if (type === 'movie') {
+            results = await searchTMDB(title, 'movie');
+        } else if (type === 'tvshow') {
+            results = await searchTMDB(title, 'tv');
+        } else if (type === 'videogame') {
+            results = await searchRAWG(title);
+        }
+
+        if (results.length === 0) {
+            searchResultsContainer.innerHTML = '<div class="sr-empty">No results found</div>';
+            return;
+        }
+
+        searchResultsContainer.innerHTML = results.map((r, i) => `
+            <div class="search-result-item" data-idx="${i}">
+                <img src="${escapeHtml(r.image || '')}" alt="" onerror="this.style.display='none'">
+                <div class="sr-info">
+                    <div class="sr-title">${escapeHtml(r.title)}</div>
+                    <div class="sr-detail">${escapeHtml(r.detail)}</div>
+                </div>
+            </div>
+        `).join('');
+
+        // Store results for selection
+        searchResultsContainer._results = results;
+
+        searchResultsContainer.querySelectorAll('.search-result-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const idx = parseInt(item.dataset.idx);
+                applyMetadata(searchResultsContainer._results[idx], type);
+                searchResultsContainer.style.display = 'none';
+            });
+        });
+    } catch (e) {
+        searchResultsContainer.innerHTML = `<div class="sr-empty">Error: ${e.message}</div>`;
+    }
+}
+
+async function searchTMDB(query, mediaType) {
+    const url = `https://api.themoviedb.org/3/search/${mediaType}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=1`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('TMDB request failed');
+    const data = await resp.json();
+
+    return (data.results || []).slice(0, 8).map(item => {
+        const title = item.title || item.name || '';
+        const year = (item.release_date || item.first_air_date || '').substring(0, 4);
+        const image = item.poster_path ? `https://image.tmdb.org/t/p/w92${item.poster_path}` : '';
+        const overview = item.overview || '';
+
+        return {
+            title,
+            detail: year ? `${year}` : 'Unknown year',
+            image,
+            // Metadata to fill
+            meta: {
+                year: year,
+                imageUrl: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
+                tmdbId: item.id,
+                mediaType
+            }
+        };
+    });
+}
+
+async function fetchTMDBDetails(tmdbId, mediaType) {
+    const url = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=credits`;
+    const resp = await fetch(url);
+    if (!resp.ok) return {};
+    return await resp.json();
+}
+
+async function searchRAWG(query) {
+    const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=8`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('RAWG request failed');
+    const data = await resp.json();
+
+    return (data.results || []).slice(0, 8).map(item => {
+        const year = (item.released || '').substring(0, 4);
+        const platforms = (item.platforms || []).map(p => p.platform.name).slice(0, 3).join(', ');
+
+        return {
+            title: item.name,
+            detail: [year, platforms].filter(Boolean).join(' · '),
+            image: item.background_image || '',
+            meta: {
+                year: year,
+                imageUrl: item.background_image || '',
+                developer: '', // RAWG doesn't return dev in search, will fill from detail if available
+                platform: platforms,
+                rawgId: item.id,
+                rawgSlug: item.slug
+            }
+        };
+    });
+}
+
+async function fetchRAWGDetails(rawgId) {
+    const url = `https://api.rawg.io/api/games/${rawgId}?key=${RAWG_API_KEY}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return {};
+    return await resp.json();
+}
+
+async function applyMetadata(result, type) {
+    const meta = result.meta;
+    document.getElementById('reviewTitle').value = result.title;
+
+    if (meta.imageUrl) {
+        document.getElementById('imageUrl').value = meta.imageUrl;
+    }
+
+    if (type === 'movie' || type === 'tvshow') {
+        // Fetch detailed info from TMDB
+        showToast('Fetching details...');
+        const details = await fetchTMDBDetails(meta.tmdbId, meta.mediaType);
+
+        // Render type fields first (to ensure inputs exist)
+        const metaData = { year: meta.year };
+        if (type === 'movie') {
+            const directors = (details.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name).join(', ');
+            const actors = (details.credits?.cast || []).slice(0, 5).map(c => c.name).join(', ');
+            const studio = (details.production_companies || []).slice(0, 2).map(c => c.name).join(', ');
+            metaData.director = directors;
+            metaData.actors = actors;
+            metaData.studio = studio;
+        } else {
+            // TV Show
+            const creators = (details.created_by || []).map(c => c.name).join(', ');
+            const actors = (details.credits?.cast || []).slice(0, 5).map(c => c.name).join(', ');
+            const network = (details.networks || []).slice(0, 2).map(n => n.name).join(', ');
+            const yearStart = (details.first_air_date || '').substring(0, 4);
+            const yearEnd = details.status === 'Ended' ? (details.last_air_date || '').substring(0, 4) : '';
+            metaData.creator = creators;
+            metaData.actors = actors;
+            metaData.network = network;
+            metaData.year = yearEnd ? `${yearStart}-${yearEnd}` : `${yearStart}-`;
+            metaData.seasons = details.number_of_seasons ? String(details.number_of_seasons) : '';
+            metaData.episodes = details.number_of_episodes ? String(details.number_of_episodes) : '';
+            if (details.status === 'Ended' || details.status === 'Canceled') {
+                metaData.showStatus = details.status === 'Canceled' ? 'Canceled' : 'Completed';
+            } else {
+                metaData.showStatus = 'Ongoing';
+            }
+        }
+
+        renderTypeFields(type, metaData);
+
+        // Set poster as cover
+        if (details.poster_path) {
+            document.getElementById('imageUrl').value = `https://image.tmdb.org/t/p/w500${details.poster_path}`;
+        }
+    } else if (type === 'videogame') {
+        // Fetch detailed info from RAWG
+        showToast('Fetching details...');
+        const details = await fetchRAWGDetails(meta.rawgId);
+
+        const metaData = {
+            year: meta.year,
+            platform: meta.platform,
+            developer: (details.developers || []).map(d => d.name).join(', ')
+        };
+
+        renderTypeFields(type, metaData);
+
+        if (details.background_image) {
+            document.getElementById('imageUrl').value = details.background_image;
+        }
+    }
+
+    showToast('Metadata filled!');
+}
+
 // ===== Expose functions for inline onclick handlers =====
 window.openModal = openModal;
 window.deleteReview = deleteReview;

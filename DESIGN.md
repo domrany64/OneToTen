@@ -75,9 +75,12 @@ OneToTen is a single-page personal review app for tracking and rating media acro
 
 ```
 /reviews
-  /<review-id>
-    { ...review object }
+  /<uid>
+    /<review-id>
+      { ...review object }
 ```
+
+Each user's reviews are stored under their Firebase Auth UID. Shared links include the UID: `#/review/{uid}/{id}`.
 
 ---
 
@@ -91,7 +94,7 @@ OneToTen is a single-page personal review app for tracking and rating media acro
 | `#/videogames` | Video Games only |
 | `#/boardgames` | Board Games only |
 | `#/books` | Books only |
-| `#/review/:id` | Single review (shareable) |
+| `#/review/:uid/:id` | Single review (shareable, cross-user) |
 | `#/add` | Add new review form |
 | `#/edit/:id` | Edit existing review |
 
@@ -168,13 +171,15 @@ Links are stored as an ordered array and can be reordered via drag-and-drop in t
 
 ---
 
-## Authentication
+## Authentication & Multi-User
 
 - Firebase Email/Password authentication
 - Login modal in the app header
 - When logged out: read-only (can browse, view, share)
 - When logged in: Add Review button visible, Edit/Delete buttons on reviews
-- DB rules restrict writes to authenticated users
+- Each user's reviews stored at `/reviews/{uid}/`
+- DB rules: `.read: true` at `/reviews`, `.write` restricted to `auth.uid === $uid`
+- Shared links include UID so anyone can view any user's reviews read-only
 
 ---
 
@@ -201,6 +206,38 @@ Links are stored as an ordered array and can be reordered via drag-and-drop in t
 - Imports with: status=completed, genres as tags, directors as meta, IMDb link
 - Skips duplicates by title match
 - Shows preview, progress bar, and detailed log
+
+---
+
+## Metadata Auto-Fetch
+
+When adding a review, users can search by title to auto-fill metadata from external APIs:
+
+| Media Type | API | Data Fetched |
+|-----------|-----|-------------|
+| Movie | TMDB (The Movie Database) | Year, director, actors, studio, poster |
+| TV Show | TMDB | Year range, creator, actors, network, seasons, episodes, status, poster |
+| Video Game | RAWG | Year, developer, platform, cover image |
+
+### Flow
+1. User selects type and enters title
+2. Clicks 🔍 or presses Enter → searches the appropriate API
+3. Results shown in dropdown with thumbnail, title, year
+4. User selects a result → detailed API call fetches full metadata
+5. Form fields auto-populate (user can still edit before saving)
+
+### API Keys
+- TMDB: Free tier, 1M requests/month
+- RAWG: Free tier, 20,000 requests/month
+
+---
+
+## Bulk Operations
+
+- Select multiple reviews via checkboxes (hold-to-enter bulk mode on mobile)
+- Bulk modify: change type, status, or tags for all selected reviews
+- Bulk delete: remove all selected reviews with confirmation
+- Selection count shown in floating action bar
 
 ---
 
