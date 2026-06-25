@@ -70,6 +70,7 @@
         <div class="controls">
             <label><input type="checkbox" id="onlyRated" checked> Only import games I've rated</label>
             <label><input type="checkbox" id="skipExisting" checked> Skip titles already in DB</label>
+            <label style="margin-left:1rem;">Default score for unrated: <input type="number" id="defaultScore" min="0" max="10" value="5" style="width:50px; background:#334155; border:1px solid #475569; color:#e2e8f0; border-radius:4px; padding:0.2rem 0.4rem; margin-left:0.3rem;"></label>
         </div>
         <div style="max-height: 300px; overflow-y: auto; margin-bottom: 1.5rem;">
             <table class="preview-table" id="previewTable">
@@ -318,7 +319,8 @@
                     : '';
 
                 // Map BGG rating (1-10) directly to our score
-                const score = r.rating > 0 ? Math.round(r.rating) : 5;
+                const defaultScore = parseInt(document.getElementById('defaultScore').value) || 5;
+                const score = r.rating > 0 ? Math.round(r.rating) : defaultScore;
 
                 // Determine status
                 let status = 'completed';
