@@ -68,7 +68,7 @@
     <div id="preview" style="display:none">
         <div class="stats" id="stats"></div>
         <div class="controls">
-            <label><input type="checkbox" id="onlyRated" checked> Only import games I've rated</label>
+            <label><input type="checkbox" id="onlyRated"> Only import games I've rated</label>
             <label><input type="checkbox" id="skipExisting" checked> Skip titles already in DB</label>
             <label style="margin-left:1rem;">Default score for unrated: <input type="number" id="defaultScore" min="0" max="10" value="5" style="width:50px; background:#334155; border:1px solid #475569; color:#e2e8f0; border-radius:4px; padding:0.2rem 0.4rem; margin-left:0.3rem;"></label>
         </div>
@@ -201,6 +201,7 @@
                     title: r['objectname'] || '',
                     objectId: r['objectid'] || '',
                     rating: parseFloat(r['rating'] || '0'),
+                    average: parseFloat(r['average'] || '0'),
                     numPlays: parseInt(r['numplays'] || '0'),
                     year: r['yearpublished'] || '',
                     minPlayers: r['minplayers'] || '',
@@ -212,6 +213,7 @@
                     comment: r['comment'] || '',
                     originalName: r['originalname'] || '',
                     objectType: r['objecttype'] || '',
+                    itemType: r['itemtype'] || '',
                     imageId: r['imageid'] || ''
                 })).filter(r => r.title);
 
@@ -256,7 +258,7 @@
                     <td>${i + 1}</td>
                     <td>${esc(r.title)}</td>
                     <td>${esc(r.year)}</td>
-                    <td>${r.rating > 0 ? r.rating + '/10' : '—'}</td>
+                    <td>${r.rating > 0 ? r.rating + '/10' : (r.average > 0 ? '~' + Math.round(r.average) : '—')}</td>
                     <td>${esc(players)}</td>
                     <td><a href="https://boardgamegeek.com/boardgame/${esc(r.objectId)}" target="_blank" style="color:#6366f1">${esc(r.objectId)}</a></td>
                 </tr>`;
@@ -318,9 +320,9 @@
                     ? (r.minPlayers === r.maxPlayers ? r.minPlayers : `${r.minPlayers}-${r.maxPlayers}`)
                     : '';
 
-                // Map BGG rating (1-10) directly to our score
+                // Map BGG community average (1-10) rounded to our score
                 const defaultScore = parseInt(document.getElementById('defaultScore').value) || 5;
-                const score = r.rating > 0 ? Math.round(r.rating) : defaultScore;
+                const score = r.rating > 0 ? Math.round(r.rating) : (r.average > 0 ? Math.round(r.average) : defaultScore);
 
                 // Determine status
                 let status = 'completed';
