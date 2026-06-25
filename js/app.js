@@ -1402,8 +1402,8 @@ function updateReviewTextDirection() {
 }
 
 // ===== Metadata Auto-Fetch (TMDB for movies/TV, RAWG for games) =====
-const TMDB_API_KEY = '559a900cca85b0bab2f8da52d3540e72';
-const RAWG_API_KEY = '77ef246fd3a44a2e8bab3e8d8a62e498';
+const TMDB_API_KEY = '0de3409b5270f98494b552581059ae03';
+const RAWG_API_KEY = 'e35ff8888fb44ea1a700bbf80f59ae5e';
 
 const searchMetaBtn = document.getElementById('searchMetaBtn');
 const searchResultsContainer = document.getElementById('searchResults');
