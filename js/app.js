@@ -407,8 +407,8 @@ function renderReviewList() {
     });
 
     const typeName = currentView === 'all' ? 'All Reviews' :
-        TYPE_CONFIG[currentView]?.label + 's' ||
-        currentView.charAt(0).toUpperCase() + currentView.slice(1);
+        (TYPE_CONFIG[currentView]?.label ? TYPE_CONFIG[currentView].label + 's' :
+        currentView.charAt(0).toUpperCase() + currentView.slice(1));
 
     const hasActiveFilters = filterScore || filterTag || filterStatus || filterCreator || filterYearFrom || filterYearTo;
     const creatorLabel = getCreatorLabel();
