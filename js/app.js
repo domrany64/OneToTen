@@ -130,6 +130,22 @@ const SOURCE_OPTIONS = Object.entries(SOURCE_LABELS).map(([val, label]) =>
     `<option value="${val}">${label}</option>`
 ).join('');
 
+const TYPE_SOURCES = {
+    movie: ['imdb', 'wikipedia', 'other'],
+    tvshow: ['imdb', 'tvdb', 'wikipedia', 'other'],
+    videogame: ['steam', 'epic', 'gog', 'ubisoft', 'xbox', 'playstation', 'igdb', 'wikipedia', 'other'],
+    boardgame: ['bgg', 'wikipedia', 'other'],
+    book: ['goodreads', 'openlibrary', 'wikipedia', 'other']
+};
+
+function getSourceOptionsForType(type) {
+    const sources = TYPE_SOURCES[type];
+    if (!sources) return SOURCE_OPTIONS;
+    return sources.map(val =>
+        `<option value="${val}">${SOURCE_LABELS[val] || val}</option>`
+    ).join('');
+}
+
 // ===== Router =====
 function getRoute() {
     const hash = window.location.hash || '#/';
@@ -753,6 +769,8 @@ function addLinkRow(url = '', source = '') {
     const container = document.getElementById('externalLinksContainer');
     const idx = linkCounter++;
     if (!source && url) source = detectSource(url);
+    const currentType = document.getElementById('reviewType')?.value || '';
+    const options = getSourceOptionsForType(currentType);
     const row = document.createElement('div');
     row.className = 'link-row';
     row.dataset.idx = idx;
@@ -762,7 +780,7 @@ function addLinkRow(url = '', source = '') {
         <input type="url" class="link-url" placeholder="https://..." value="${escapeHtml(url)}">
         <select class="link-source">
             <option value="">Auto-detect</option>
-            ${SOURCE_OPTIONS}
+            ${options}
         </select>
         <button type="button" class="btn btn-danger btn-sm link-remove" onclick="removeLinkRow(${idx})">✕</button>
     `;
