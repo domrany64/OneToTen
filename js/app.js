@@ -1369,6 +1369,74 @@ function showToast(message) {
     setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
+// ===== Card Hover Tooltip =====
+const cardTooltip = document.getElementById('cardTooltip');
+let tooltipVisible = false;
+
+function buildTooltipContent(review) {
+    let html = '';
+
+    if (review.review) {
+        const rtl = review.reviewLang === 'fa' ? ' rtl' : '';
+        html += `<div class="tt-review${rtl}">${escapeHtml(review.review)}</div>`;
+    }
+
+    const meta = review.meta || {};
+    const metaParts = [];
+    if (meta.director) metaParts.push(`Director: ${meta.director}`);
+    if (meta.creator) metaParts.push(`Creator: ${meta.creator}`);
+    if (meta.developer) metaParts.push(`Developer: ${meta.developer}`);
+    if (meta.author) metaParts.push(`Author: ${meta.author}`);
+    if (meta.designer) metaParts.push(`Designer: ${meta.designer}`);
+    if (meta.actors) metaParts.push(`Cast: ${meta.actors}`);
+    if (meta.year) metaParts.push(`Year: ${meta.year}`);
+    if (meta.platform) metaParts.push(`Platform: ${meta.platform}`);
+    if (meta.network) metaParts.push(`Network: ${meta.network}`);
+
+    if (metaParts.length) {
+        html += `<div class="tt-meta">${metaParts.map(p => `<span>${escapeHtml(p)}</span>`).join('')}</div>`;
+    }
+
+    if (review.tags && review.tags.length) {
+        html += `<div class="tt-tags">${review.tags.map(t => `<span class="tt-tag">${escapeHtml(t)}</span>`).join('')}</div>`;
+    }
+
+    return html || '<div class="tt-meta"><span>No details</span></div>';
+}
+
+mainContent.addEventListener('mouseover', (e) => {
+    const card = e.target.closest('.review-card');
+    if (!card) return;
+    const id = card.dataset.id;
+    const review = allReviews[id];
+    if (!review) return;
+
+    cardTooltip.innerHTML = buildTooltipContent(review);
+    cardTooltip.style.display = 'block';
+    tooltipVisible = true;
+});
+
+mainContent.addEventListener('mousemove', (e) => {
+    if (!tooltipVisible) return;
+    const x = e.clientX + 16;
+    const y = e.clientY + 16;
+    // Keep tooltip on screen
+    const rect = cardTooltip.getBoundingClientRect();
+    const maxX = window.innerWidth - rect.width - 8;
+    const maxY = window.innerHeight - rect.height - 8;
+    cardTooltip.style.left = Math.min(x, maxX) + 'px';
+    cardTooltip.style.top = Math.min(y, maxY) + 'px';
+});
+
+mainContent.addEventListener('mouseout', (e) => {
+    const card = e.target.closest('.review-card');
+    if (!card) return;
+    const related = e.relatedTarget?.closest('.review-card');
+    if (related === card) return; // still inside same card
+    cardTooltip.style.display = 'none';
+    tooltipVisible = false;
+});
+
 // ===== Event Listeners =====
 addReviewBtn.addEventListener('click', () => openModal());
 modalClose.addEventListener('click', closeModal);
