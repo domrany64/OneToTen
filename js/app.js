@@ -126,6 +126,7 @@ const SOURCE_LABELS = {
     goodreads: 'Goodreads',
     openlibrary: 'OpenLibrary',
     iranketab: 'IranKetab',
+    ganjoor: 'Ganjoor',
     wikipedia: 'Wikipedia',
     other: 'Link'
 };
@@ -139,7 +140,7 @@ const TYPE_SOURCES = {
     tvshow: ['imdb', 'tvdb', 'wikipedia', 'other'],
     videogame: ['steam', 'epic', 'gog', 'ubisoft', 'xbox', 'playstation', 'igdb', 'wikipedia', 'other'],
     boardgame: ['bgg', 'wikipedia', 'other'],
-    book: ['goodreads', 'openlibrary', 'iranketab', 'wikipedia', 'other']
+    book: ['goodreads', 'openlibrary', 'iranketab', 'ganjoor', 'wikipedia', 'other']
 };
 
 function getSourceOptionsForType(type) {
@@ -876,7 +877,7 @@ const TYPE_FIELDS = {
         { id: 'author', label: 'Author(s)', type: 'text' },
         { id: 'year', label: 'Year', type: 'number' },
         { id: 'translator', label: 'Translator(s)', type: 'text' },
-        { id: 'format', label: 'Format', type: 'select', options: ['Physical', 'eBook', 'Audiobook'] },
+        { id: 'format', label: 'Format', type: 'select', options: ['Physical', 'eBook', 'Audiobook', 'Podcast'] },
         { id: 'narrator', label: 'Narrator(s)', type: 'text' },
         { id: 'publisher', label: 'Audiobook Publisher', type: 'text' }
     ]
@@ -1242,6 +1243,7 @@ function detectSource(url) {
     if (url.includes('goodreads.com')) return 'goodreads';
     if (url.includes('openlibrary.org')) return 'openlibrary';
     if (url.includes('iranketab.ir')) return 'iranketab';
+    if (url.includes('ganjoor.net')) return 'ganjoor';
     if (url.includes('wikipedia.org')) return 'wikipedia';
     return 'other';
 }
