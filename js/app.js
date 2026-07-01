@@ -1149,6 +1149,7 @@ function openModal(editId = null) {
 
 function closeModal() {
     modalOverlay.classList.remove('active');
+    searchResultsContainer.style.display = 'none';
     // If we navigated to #/add or #/edit, go back
     const route = getRoute();
     if (route.path === 'add' || route.path === 'edit') {
@@ -1195,6 +1196,7 @@ reviewForm.addEventListener('submit', (e) => {
         showToast('Review added!');
     }
 
+    allDbReviews = null; // invalidate cache so new review appears in suggestions
     closeModal();
 });
 
@@ -1401,7 +1403,7 @@ function updateReviewTextDirection() {
     }
 }
 
-// ===== Metadata Auto-Fetch (TMDB for movies/TV, RAWG for games, Google Books for books) =====
+// ===== Metadata Auto-Fetch (TMDB for movies/TV, RAWG for games, Open Library for books) =====
 const TMDB_API_KEY = '0de3409b5270f98494b552581059ae03';
 const RAWG_API_KEY = 'e35ff8888fb44ea1a700bbf80f59ae5e';
 
@@ -1410,7 +1412,116 @@ const searchResultsContainer = document.getElementById('searchResults');
 
 searchMetaBtn.addEventListener('click', () => searchMetadata());
 
-// Also allow Enter in title field to trigger search if type supports it
+// ===== DB Autocomplete (cross-user) =====
+let allDbReviews = null; // cached flat array of all reviews across users
+let dbAutocompleteTimer = null;
+
+async function loadAllDbReviews() {
+    if (allDbReviews) return allDbReviews;
+    const snapshot = await get(ref(db, 'reviews'));
+    const data = snapshot.val() || {};
+    allDbReviews = [];
+    // data is { uid: { reviewId: reviewObj, ... }, ... }
+    for (const [uid, reviews] of Object.entries(data)) {
+        if (!reviews || typeof reviews !== 'object') continue;
+        for (const [id, review] of Object.entries(reviews)) {
+            if (review && review.title) {
+                allDbReviews.push({ ...review, _uid: uid, _id: id });
+            }
+        }
+    }
+    return allDbReviews;
+}
+
+function searchDbReviews(query) {
+    if (!allDbReviews || !query) return [];
+    const q = query.toLowerCase();
+    // Deduplicate by title (case-insensitive), prefer the one with more metadata
+    const seen = new Map();
+    for (const r of allDbReviews) {
+        const key = r.title.toLowerCase();
+        if (key.includes(q)) {
+            if (!seen.has(key) || (r.imageUrl && !seen.get(key).imageUrl)) {
+                seen.set(key, r);
+            }
+        }
+    }
+    return [...seen.values()].slice(0, 8);
+}
+
+function showDbSuggestions(query) {
+    const results = searchDbReviews(query);
+    if (results.length === 0) {
+        searchResultsContainer.style.display = 'none';
+        return;
+    }
+
+    const config = (type) => TYPE_CONFIG[type] || { icon: '❓', label: 'Unknown' };
+
+    searchResultsContainer.style.display = 'block';
+    searchResultsContainer.innerHTML = results.map((r, i) => `
+        <div class="search-result-item" data-db-idx="${i}">
+            ${r.imageUrl ? `<img src="${escapeHtml(r.imageUrl)}" alt="" onerror="this.style.display='none'">` : ''}
+            <div class="sr-info">
+                <div class="sr-title">${config(r.type).icon} ${escapeHtml(r.title)}</div>
+                <div class="sr-detail">${escapeHtml([r.meta?.year, r.meta?.director || r.meta?.developer || r.meta?.author || r.meta?.creator || r.meta?.designer || '', config(r.type).label].filter(Boolean).join(' · '))}</div>
+            </div>
+        </div>
+    `).join('');
+
+    searchResultsContainer._dbResults = results;
+
+    searchResultsContainer.querySelectorAll('[data-db-idx]').forEach(item => {
+        item.addEventListener('click', () => {
+            const idx = parseInt(item.dataset.dbIdx);
+            applyDbReview(searchResultsContainer._dbResults[idx]);
+            searchResultsContainer.style.display = 'none';
+        });
+    });
+}
+
+function applyDbReview(review) {
+    // Fill everything except score
+    document.getElementById('reviewType').value = review.type || '';
+    updateStatusOptions(review.type || '', review.status || 'completed');
+    document.getElementById('reviewStatus').value = review.status || 'completed';
+    document.getElementById('reviewTitle').value = review.title || '';
+    document.getElementById('reviewLang').value = review.reviewLang || 'en';
+    document.getElementById('imageUrl').value = review.imageUrl || '';
+    document.getElementById('reviewTags').value = (review.tags || []).join(', ');
+
+    // Render external links
+    let links = review.externalLinks || [];
+    if (links.length === 0 && review.externalUrl) {
+        links = [{ url: review.externalUrl, source: review.externalSource || '' }];
+    }
+    renderLinksInForm(links);
+
+    // Render type-specific fields
+    renderTypeFields(review.type, review.meta || {});
+
+    // Don't set review text (that's personal), don't set score
+    // Don't set dateConsumed (that's personal)
+    updateReviewTextDirection();
+    showToast('Filled from existing review!');
+}
+
+document.getElementById('reviewTitle').addEventListener('input', (e) => {
+    const query = e.target.value.trim();
+    clearTimeout(dbAutocompleteTimer);
+
+    if (query.length < 2) {
+        searchResultsContainer.style.display = 'none';
+        return;
+    }
+
+    dbAutocompleteTimer = setTimeout(async () => {
+        await loadAllDbReviews();
+        showDbSuggestions(query);
+    }, 250);
+});
+
+// Also allow Enter in title field to trigger API search if type supports it
 document.getElementById('reviewTitle').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         const type = document.getElementById('reviewType').value;
