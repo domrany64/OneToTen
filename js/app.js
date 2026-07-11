@@ -509,9 +509,13 @@ function renderReviewList() {
     `;
 
     // Attach event listeners
+    let searchDebounceTimer = null;
     document.getElementById('searchInput').addEventListener('input', (e) => {
-        searchQuery = e.target.value;
-        renderReviewList();
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            searchQuery = e.target.value;
+            renderReviewList();
+        }, 600);
     });
     document.getElementById('sortSelect').addEventListener('change', (e) => {
         sortBy = e.target.value;

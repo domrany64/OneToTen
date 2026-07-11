@@ -150,6 +150,7 @@ Links are stored as an ordered array and can be reordered via drag-and-drop in t
 
 ### Search
 - Client-side search across title, tags, and meta field values
+- 600ms debounce on input to avoid re-rendering on every keystroke
 
 ---
 
