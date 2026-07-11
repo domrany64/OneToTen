@@ -579,6 +579,8 @@ function renderReviewList() {
                 return;
             }
             navigate(`#/review/${card.dataset.id}`);
+            cardTooltip.style.display = 'none';
+            tooltipVisible = false;
         });
     });
 
