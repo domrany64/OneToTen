@@ -53,3 +53,41 @@ A personal media review website where you rate and review everything you play, r
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
+
+## GitHub Actions Backup Setup
+
+The weekly encrypted backup requires 2 repository secrets and one Google Cloud API to be enabled.
+
+### 1. Enable the IAM Credentials API
+Visit this URL and click **Enable** (free, one-time — use your OneToTen Firebase project):
+`https://console.developers.google.com/apis/api/iamcredentials.googleapis.com/overview?project=one-to-ten-92b88`
+
+### 2. Generate a Firebase service account key
+1. Go to [console.firebase.google.com](https://console.firebase.google.com) → your **OneToTen** project
+2. Click ⚙️ → **Project settings** → **Service accounts** tab
+3. Click **"Generate new private key"** → confirm → a JSON file downloads
+4. Open the JSON file and copy its **entire contents**
+
+### 3. Add repository secrets
+Go to: **GitHub → OneToTen repo → Settings → Secrets and variables → Actions → Repository secrets → New repository secret**
+
+| Secret name | Value |
+|---|---|
+| `FIREBASE_SA_KEY` | Entire contents of the service account JSON key file |
+| `BACKUP_PASSWORD` | Any password you choose — required to decrypt backups later |
+
+### 4. Run the workflow
+Go to **Actions → Backup Firebase DB (Encrypted) → Run workflow** to test.
+
+Backups are stored as AES-256-CBC encrypted `.enc` files in `backups/` — unreadable without your `BACKUP_PASSWORD`. Runs automatically every Sunday at 3 AM UTC. Keeps last 10 backups.
+
+### Verify / decrypt a backup
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+  -in backups/backup_YYYYMMDD_HHMMSS.json.enc \
+  -out /tmp/backup_test.json \
+  -pass pass:"YOUR_BACKUP_PASSWORD"
+
+# Confirm valid JSON
+python3 -m json.tool /tmp/backup_test.json > /dev/null && echo "OK"
+```
