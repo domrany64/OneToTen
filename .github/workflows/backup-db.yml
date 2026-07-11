@@ -1,4 +1,4 @@
-name: Backup Firebase DB
+name: Backup Firebase DB (Encrypted)
 
 on:
   schedule:
@@ -15,20 +15,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download database backup
+      - name: Authenticate with Google
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SA_KEY }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/firebase.database,https://www.googleapis.com/auth/userinfo.email
+
+      - name: Download and encrypt database backup
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
         run: |
           mkdir -p backups
-          curl -s "https://one-to-ten-92b88-default-rtdb.firebaseio.com/.json" | python3 -m json.tool > "backups/backup_$(date +%Y%m%d_%H%M%S).json"
+
+          HTTP_STATUS=$(curl -s -w "%{http_code}" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            "https://one-to-ten-92b88-default-rtdb.firebaseio.com/.json" \
+            -o /tmp/backup_raw.json)
+
+          if [ "$HTTP_STATUS" != "200" ] || [ ! -s /tmp/backup_raw.json ]; then
+            echo "ERROR: Download failed. HTTP status: ${HTTP_STATUS}"
+            cat /tmp/backup_raw.json || true
+            exit 1
+          fi
+
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 \
+            -in /tmp/backup_raw.json \
+            -out "backups/backup_$(date +%Y%m%d_%H%M%S).json.enc" \
+            -pass pass:"${BACKUP_PASSWORD}"
+
+          rm -f /tmp/backup_raw.json
 
       - name: Remove old backups (keep last 10)
         run: |
           cd backups
-          ls -t *.json | tail -n +11 | xargs -r rm
+          ls -t *.enc 2>/dev/null | tail -n +11 | xargs -r rm
 
       - name: Commit and push backup
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add backups/
-          git diff --cached --quiet || git commit -m "Automated DB backup $(date +%Y-%m-%d)"
+          git diff --cached --quiet || git commit -m "Encrypted DB backup $(date +%Y-%m-%d)"
           git push

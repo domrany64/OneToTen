@@ -24,7 +24,7 @@ A personal media review website where you rate and review everything you play, r
 - **Context-aware creator filter** — Shows Director/Actor for movies, Developer for games, Author/Narrator for books, Designer for board games
 - **Real-time sync** — Firebase Realtime Database keeps everything in sync
 - **Authentication** — Firebase Auth protects write operations (login required to add/edit/delete)
-- **Automated backups** — Weekly GitHub Actions workflow backs up the database
+- **Automated backups** — Weekly GitHub Actions workflow backs up the database with AES-256-CBC encryption (requires `FIREBASE_SA_KEY` and `BACKUP_PASSWORD` repo secrets)
 - **IMDb import tool** — Bulk import ratings from IMDb CSV export
 - **BGG import tool** — Bulk import board game collection from BoardGameGeek CSV export
 - **Playnite import tool** — Bulk import game library from Playnite CSV export

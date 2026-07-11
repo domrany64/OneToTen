@@ -193,9 +193,14 @@ Links are stored as an ordered array and can be reordered via drag-and-drop in t
 
 ## Automated Backups
 
-- GitHub Actions workflow runs weekly (Sunday 3AM UTC) or manually
-- Exports full DB as JSON to `/backups/` directory
+- GitHub Actions workflow runs weekly (Sunday 3AM UTC) or manually via `workflow_dispatch`
+- Authenticates via Firebase service account (`FIREBASE_SA_KEY` repo secret)
+- Downloads full DB via REST API with OAuth2 Bearer token
+- Encrypts with AES-256-CBC (PBKDF2, 100k iterations) using `BACKUP_PASSWORD` repo secret
+- Stores as `.enc` files in `/backups/` — unreadable without the password
 - Retains last 10 backups
+
+**Setup:** See WalletWatch README for step-by-step — same process (enable IAM Credentials API, generate service account key, add 2 repo secrets).
 
 ---
 
