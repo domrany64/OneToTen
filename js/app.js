@@ -487,6 +487,7 @@ function renderReviewList() {
                 <div class="reviews-header">
                     <h1>${typeName} (${reviews.length})</h1>
                     <div class="reviews-header-actions">
+                        ${isLoggedIn() && ['movie', 'tvshow', 'videogame', 'book'].includes(currentView) ? `<button class="btn btn-secondary btn-sm" id="bulkRefreshBtn" title="Refresh metadata from API for all ${typeName}">🔄 Refresh All</button>` : ''}
                         ${isLoggedIn() ? `<button class="btn btn-secondary btn-sm" id="bulkToggleBtn">${bulkMode ? 'Cancel' : 'Select'}</button>` : ''}
                         <input type="text" class="search-input" id="searchInput" 
                             placeholder="Search title, author, tag..." value="${escapeHtml(searchQuery)}">
@@ -604,6 +605,12 @@ function renderReviewList() {
             selectedIds.clear();
             renderReviewList();
         });
+    }
+
+    // Bulk refresh button
+    const bulkRefreshBtn = document.getElementById('bulkRefreshBtn');
+    if (bulkRefreshBtn) {
+        bulkRefreshBtn.addEventListener('click', () => startBulkRefresh(currentView, reviews));
     }
 
     // Bulk select all
@@ -1897,6 +1904,275 @@ async function applyMetadata(result, type) {
     }
 
     showToast('Metadata filled!');
+}
+
+// ===== Bulk Refresh Metadata =====
+function isReviewComplete(review, type) {
+    const meta = review.meta || {};
+    const links = review.externalLinks || [];
+    const hasImage = !!review.imageUrl;
+    const hasLinks = links.length >= 2;
+
+    if (type === 'movie') {
+        return hasImage && hasLinks && meta.director && meta.year;
+    } else if (type === 'tvshow') {
+        return hasImage && hasLinks && meta.creator && meta.year;
+    } else if (type === 'videogame') {
+        return hasImage && meta.developer && meta.year;
+    } else if (type === 'book') {
+        return hasImage && meta.author && meta.year;
+    }
+    return true;
+}
+
+async function startBulkRefresh(type, reviews) {
+    const overlay = document.getElementById('bulkRefreshOverlay');
+    const title = document.getElementById('bulkRefreshTitle');
+    const statusEl = document.getElementById('brStatus');
+    const percentEl = document.getElementById('brPercent');
+    const progressFill = document.getElementById('brProgressFill');
+    const updatedEl = document.getElementById('brUpdated');
+    const skippedEl = document.getElementById('brSkipped');
+    const failedEl = document.getElementById('brFailed');
+    const logEl = document.getElementById('brLog');
+
+    const typeLabel = TYPE_CONFIG[type]?.label || type;
+    title.textContent = `Refresh ${typeLabel} Metadata`;
+    overlay.classList.add('active');
+    logEl.innerHTML = '';
+    progressFill.style.width = '0%';
+    updatedEl.textContent = '0';
+    skippedEl.textContent = '0';
+    failedEl.textContent = '0';
+
+    document.getElementById('bulkRefreshClose').onclick = () => {
+        overlay.classList.remove('active');
+        bulkRefreshAbort = true;
+    };
+
+    bulkRefreshAbort = false;
+
+    const incomplete = reviews.filter(r => !isReviewComplete(r, type));
+    const total = incomplete.length;
+
+    if (total === 0) {
+        statusEl.textContent = 'All reviews already complete!';
+        percentEl.textContent = '100%';
+        progressFill.style.width = '100%';
+        skippedEl.textContent = String(reviews.length);
+        brLog(logEl, `All ${reviews.length} reviews have complete metadata.`, 'skip');
+        return;
+    }
+
+    brLog(logEl, `Found ${total} incomplete out of ${reviews.length} total. Starting...`, 'info');
+    statusEl.textContent = `Processing 0 / ${total}`;
+
+    let updated = 0, skipped = 0, failed = 0;
+
+    for (let i = 0; i < incomplete.length; i++) {
+        if (bulkRefreshAbort) {
+            brLog(logEl, 'Aborted by user.', 'error');
+            break;
+        }
+
+        const review = incomplete[i];
+        const pct = Math.round(((i + 1) / total) * 100);
+        statusEl.textContent = `Processing ${i + 1} / ${total}`;
+        percentEl.textContent = `${pct}%`;
+        progressFill.style.width = `${pct}%`;
+
+        try {
+            const result = await refreshSingleReview(review, type);
+            if (result === 'updated') {
+                updated++;
+                brLog(logEl, `✅ ${review.title}`, 'success');
+            } else if (result === 'not-found') {
+                failed++;
+                brLog(logEl, `❌ ${review.title} — not found on API`, 'error');
+            } else {
+                skipped++;
+            }
+        } catch (e) {
+            failed++;
+            brLog(logEl, `❌ ${review.title} — ${e.message}`, 'error');
+        }
+
+        updatedEl.textContent = String(updated);
+        skippedEl.textContent = String(skipped);
+        failedEl.textContent = String(failed);
+
+        // Rate limit: ~250ms between requests
+        await new Promise(r => setTimeout(r, 250));
+    }
+
+    statusEl.textContent = 'Done!';
+    brLog(logEl, `\nFinished: ${updated} updated, ${skipped} skipped, ${failed} not found.`, 'info');
+}
+
+let bulkRefreshAbort = false;
+
+function brLog(logEl, msg, cls = 'info') {
+    const colors = { success: '#22c55e', skip: '#eab308', error: '#ef4444', info: '#94a3b8' };
+    const div = document.createElement('div');
+    div.style.color = colors[cls] || colors.info;
+    div.textContent = msg;
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function refreshSingleReview(review, type) {
+    const meta = review.meta || {};
+    const year = meta.year ? String(meta.year).split('-')[0] : '';
+
+    let tmdbResult = null;
+    let details = null;
+
+    if (type === 'movie' || type === 'tvshow') {
+        const mediaType = type === 'movie' ? 'movie' : 'tv';
+        // Try to find by existing IMDb link first
+        const imdbLink = (review.externalLinks || []).find(l => l.source === 'imdb');
+        const imdbMatch = imdbLink?.url?.match(/tt\d+/);
+
+        if (imdbMatch) {
+            const results = await lookupByImdbId(imdbMatch[0]);
+            if (results.length > 0) tmdbResult = results[0];
+        }
+
+        if (!tmdbResult) {
+            const results = await searchTMDB(review.title, mediaType, year);
+            // Pick exact title match, or first result
+            tmdbResult = results.find(r => r.title.toLowerCase() === review.title.toLowerCase()) || results[0];
+        }
+
+        if (!tmdbResult) return 'not-found';
+
+        details = await fetchTMDBDetails(tmdbResult.meta.tmdbId, tmdbResult.meta.mediaType);
+        if (!details || !details.id) return 'not-found';
+
+        const updates = {};
+        const newMeta = { ...meta };
+        const extIds = details.external_ids || {};
+
+        // Fill missing image
+        if (!review.imageUrl && details.poster_path) {
+            updates.imageUrl = `https://image.tmdb.org/t/p/w500${details.poster_path}`;
+        }
+
+        // Fill missing links
+        const existingLinks = review.externalLinks || [];
+        const newLinks = [...existingLinks];
+        const hasSrc = (src) => newLinks.some(l => l.source === src);
+
+        const imdbId = extIds.imdb_id || details.imdb_id;
+        if (imdbId && !hasSrc('imdb')) newLinks.push({ url: `https://www.imdb.com/title/${imdbId}/`, source: 'imdb' });
+        if (!hasSrc('tmdb')) newLinks.push({ url: `https://www.themoviedb.org/${tmdbResult.meta.mediaType}/${tmdbResult.meta.tmdbId}`, source: 'tmdb' });
+        if (extIds.tvdb_id && !hasSrc('tvdb')) newLinks.push({ url: `https://thetvdb.com/?tab=series&id=${extIds.tvdb_id}`, source: 'tvdb' });
+        if (extIds.wikidata_id && !hasSrc('wikipedia')) newLinks.push({ url: `https://www.wikidata.org/wiki/${extIds.wikidata_id}`, source: 'wikipedia' });
+
+        if (newLinks.length !== existingLinks.length) {
+            updates.externalLinks = newLinks;
+        }
+
+        // Fill missing meta
+        if (type === 'movie') {
+            if (!newMeta.director) {
+                const directors = (details.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name).join(', ');
+                if (directors) newMeta.director = directors;
+            }
+            if (!newMeta.actors) {
+                const actors = (details.credits?.cast || []).slice(0, 5).map(c => c.name).join(', ');
+                if (actors) newMeta.actors = actors;
+            }
+            if (!newMeta.studio) {
+                const studio = (details.production_companies || []).slice(0, 2).map(c => c.name).join(', ');
+                if (studio) newMeta.studio = studio;
+            }
+            if (!newMeta.year && tmdbResult.meta.year) newMeta.year = tmdbResult.meta.year;
+        } else {
+            if (!newMeta.creator) {
+                const creators = (details.created_by || []).map(c => c.name).join(', ');
+                if (creators) newMeta.creator = creators;
+            }
+            if (!newMeta.actors) {
+                const actors = (details.credits?.cast || []).slice(0, 5).map(c => c.name).join(', ');
+                if (actors) newMeta.actors = actors;
+            }
+            if (!newMeta.network) {
+                const network = (details.networks || []).slice(0, 2).map(n => n.name).join(', ');
+                if (network) newMeta.network = network;
+            }
+            if (!newMeta.year) {
+                const ys = (details.first_air_date || '').substring(0, 4);
+                const ye = details.status === 'Ended' ? (details.last_air_date || '').substring(0, 4) : '';
+                if (ys) newMeta.year = ye ? `${ys}-${ye}` : `${ys}-`;
+            }
+            if (!newMeta.seasons && details.number_of_seasons) newMeta.seasons = String(details.number_of_seasons);
+            if (!newMeta.episodes && details.number_of_episodes) newMeta.episodes = String(details.number_of_episodes);
+            if (!newMeta.showStatus) {
+                if (details.status === 'Ended' || details.status === 'Canceled') {
+                    newMeta.showStatus = details.status === 'Canceled' ? 'Canceled' : 'Completed';
+                } else {
+                    newMeta.showStatus = 'Ongoing';
+                }
+            }
+        }
+
+        if (JSON.stringify(newMeta) !== JSON.stringify(meta)) updates.meta = newMeta;
+
+        if (Object.keys(updates).length === 0) return 'skipped';
+
+        await update(ref(db, `reviews/${currentUser.uid}/${review.id}`), updates);
+        return 'updated';
+
+    } else if (type === 'videogame') {
+        const results = await searchRAWG(review.title);
+        const match = results.find(r => r.title.toLowerCase() === review.title.toLowerCase()) || results[0];
+        if (!match) return 'not-found';
+
+        details = await fetchRAWGDetails(match.meta.rawgId);
+        if (!details || !details.id) return 'not-found';
+
+        const updates = {};
+        const newMeta = { ...meta };
+
+        if (!review.imageUrl && details.background_image) {
+            updates.imageUrl = details.background_image;
+        }
+        if (!newMeta.developer) {
+            const dev = (details.developers || []).map(d => d.name).join(', ');
+            if (dev) newMeta.developer = dev;
+        }
+        if (!newMeta.year && match.meta.year) newMeta.year = match.meta.year;
+        if (!newMeta.platform && match.meta.platform) newMeta.platform = match.meta.platform;
+
+        if (JSON.stringify(newMeta) !== JSON.stringify(meta)) updates.meta = newMeta;
+        if (Object.keys(updates).length === 0) return 'skipped';
+
+        await update(ref(db, `reviews/${currentUser.uid}/${review.id}`), updates);
+        return 'updated';
+
+    } else if (type === 'book') {
+        const results = await searchGoogleBooks(review.title);
+        const match = results.find(r => r.title.toLowerCase() === review.title.toLowerCase()) || results[0];
+        if (!match) return 'not-found';
+
+        const updates = {};
+        const newMeta = { ...meta };
+
+        if (!review.imageUrl && match.meta.imageUrl) {
+            updates.imageUrl = match.meta.imageUrl;
+        }
+        if (!newMeta.author && match.meta.author) newMeta.author = match.meta.author;
+        if (!newMeta.year && match.meta.year) newMeta.year = match.meta.year;
+
+        if (JSON.stringify(newMeta) !== JSON.stringify(meta)) updates.meta = newMeta;
+        if (Object.keys(updates).length === 0) return 'skipped';
+
+        await update(ref(db, `reviews/${currentUser.uid}/${review.id}`), updates);
+        return 'updated';
+    }
+
+    return 'skipped';
 }
 
 // ===== Expose functions for inline onclick handlers =====
