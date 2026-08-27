@@ -1044,9 +1044,21 @@ body {
     gap: 0.5rem;
     align-items: center;
 }
-.title-search-wrapper input {
+.title-search-wrapper input[type="text"] {
     flex: 1;
 }
+#searchYear {
+    flex: 0 0 70px;
+    padding: 0.4rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 0.85rem;
+    text-align: center;
+}
+#searchYear::-webkit-inner-spin-button { -webkit-appearance: none; }
+#searchYear { -moz-appearance: textfield; }
 #searchMetaBtn {
     white-space: nowrap;
     padding: 0.5rem 0.75rem;

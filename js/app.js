@@ -114,6 +114,7 @@ const TYPE_CONFIG = {
 
 const SOURCE_LABELS = {
     imdb: 'IMDb',
+    tmdb: 'TMDB',
     tvdb: 'TVDB',
     bgg: 'BoardGameGeek',
     igdb: 'IGDB',
@@ -136,8 +137,8 @@ const SOURCE_OPTIONS = Object.entries(SOURCE_LABELS).map(([val, label]) =>
 ).join('');
 
 const TYPE_SOURCES = {
-    movie: ['imdb', 'wikipedia', 'other'],
-    tvshow: ['imdb', 'tvdb', 'wikipedia', 'other'],
+    movie: ['imdb', 'tmdb', 'tvdb', 'wikipedia', 'other'],
+    tvshow: ['imdb', 'tmdb', 'tvdb', 'wikipedia', 'other'],
     videogame: ['steam', 'epic', 'gog', 'ubisoft', 'xbox', 'playstation', 'igdb', 'wikipedia', 'other'],
     boardgame: ['bgg', 'wikipedia', 'other'],
     book: ['goodreads', 'openlibrary', 'iranketab', 'ganjoor', 'wikipedia', 'other']
@@ -1122,6 +1123,7 @@ function openModal(editId = null) {
     reviewForm.reset();
     document.getElementById('reviewId').value = '';
     document.getElementById('typeSpecificFields').innerHTML = '';
+    document.getElementById('searchYear').value = '';
     scoreDisplay.textContent = '5';
     scoreSlider.value = 5;
 
@@ -1237,6 +1239,7 @@ function copyShareLink(id) {
 // ===== Helpers =====
 function detectSource(url) {
     if (url.includes('imdb.com')) return 'imdb';
+    if (url.includes('themoviedb.org')) return 'tmdb';
     if (url.includes('thetvdb.com')) return 'tvdb';
     if (url.includes('boardgamegeek.com')) return 'bgg';
     if (url.includes('igdb.com')) return 'igdb';
@@ -1609,10 +1612,11 @@ document.getElementById('reviewTitle').addEventListener('keydown', (e) => {
 });
 
 async function searchMetadata() {
-    const title = document.getElementById('reviewTitle').value.trim();
+    const titleInput = document.getElementById('reviewTitle').value.trim();
     const type = document.getElementById('reviewType').value;
+    const year = document.getElementById('searchYear').value.trim();
 
-    if (!title) { showToast('Enter a title to search'); return; }
+    if (!titleInput) { showToast('Enter a title to search'); return; }
     if (!type) { showToast('Select a type first'); return; }
 
     if (!['movie', 'tvshow', 'videogame', 'book'].includes(type)) {
@@ -1625,15 +1629,30 @@ async function searchMetadata() {
 
     try {
         let results = [];
-        if (type === 'movie') {
-            results = await searchTMDB(title, 'movie');
+
+        // Check if input is an IMDb or TVDB URL
+        const imdbMatch = titleInput.match(/imdb\.com\/title\/(tt\d+)/);
+        const tvdbMatch = titleInput.match(/thetvdb\.com\/(?:series|movies)\/[^\/]+/);
+
+        if (imdbMatch && (type === 'movie' || type === 'tvshow')) {
+            results = await lookupByImdbId(imdbMatch[1]);
+        } else if (type === 'movie') {
+            results = await searchTMDB(titleInput, 'movie', year);
         } else if (type === 'tvshow') {
-            results = await searchTMDB(title, 'tv');
+            results = await searchTMDB(titleInput, 'tv', year);
         } else if (type === 'videogame') {
-            results = await searchRAWG(title);
+            results = await searchRAWG(titleInput);
         } else if (type === 'book') {
-            results = await searchGoogleBooks(title);
+            results = await searchGoogleBooks(titleInput);
         }
+
+        // Sort exact title matches first
+        const query = titleInput.toLowerCase();
+        results.sort((a, b) => {
+            const aExact = a.title.toLowerCase() === query ? 0 : 1;
+            const bExact = b.title.toLowerCase() === query ? 0 : 1;
+            return aExact - bExact;
+        });
 
         if (results.length === 0) {
             searchResultsContainer.innerHTML = '<div class="sr-empty">No results found</div>';
@@ -1665,8 +1684,39 @@ async function searchMetadata() {
     }
 }
 
-async function searchTMDB(query, mediaType) {
-    const url = `https://api.themoviedb.org/3/search/${mediaType}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=1`;
+async function lookupByImdbId(imdbId) {
+    const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('TMDB lookup failed');
+    const data = await resp.json();
+
+    const items = [...(data.movie_results || []), ...(data.tv_results || [])];
+    return items.map(item => {
+        const title = item.title || item.name || '';
+        const mediaType = item.media_type || (item.title ? 'movie' : 'tv');
+        const year = (item.release_date || item.first_air_date || '').substring(0, 4);
+        const image = item.poster_path ? `https://image.tmdb.org/t/p/w92${item.poster_path}` : '';
+
+        return {
+            title,
+            detail: year ? `${year}` : 'Unknown year',
+            image,
+            meta: {
+                year,
+                imageUrl: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
+                tmdbId: item.id,
+                mediaType,
+                imdbId
+            }
+        };
+    });
+}
+
+async function searchTMDB(query, mediaType, year = '') {
+    let url = `https://api.themoviedb.org/3/search/${mediaType}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=1`;
+    if (year) {
+        url += mediaType === 'movie' ? `&year=${year}` : `&first_air_date_year=${year}`;
+    }
     const resp = await fetch(url);
     if (!resp.ok) throw new Error('TMDB request failed');
     const data = await resp.json();
@@ -1693,7 +1743,7 @@ async function searchTMDB(query, mediaType) {
 }
 
 async function fetchTMDBDetails(tmdbId, mediaType) {
-    const url = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=credits`;
+    const url = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=credits,external_ids`;
     const resp = await fetch(url);
     if (!resp.ok) return {};
     return await resp.json();
@@ -1771,6 +1821,16 @@ async function applyMetadata(result, type) {
         // Fetch detailed info from TMDB
         showToast('Fetching details...');
         const details = await fetchTMDBDetails(meta.tmdbId, meta.mediaType);
+
+        // Build external links
+        const links = [];
+        const extIds = details.external_ids || {};
+        const imdbId = meta.imdbId || extIds.imdb_id || details.imdb_id;
+        if (imdbId) links.push({ url: `https://www.imdb.com/title/${imdbId}/`, source: 'imdb' });
+        links.push({ url: `https://www.themoviedb.org/${meta.mediaType}/${meta.tmdbId}`, source: 'tmdb' });
+        if (extIds.tvdb_id) links.push({ url: `https://thetvdb.com/?tab=series&id=${extIds.tvdb_id}`, source: 'tvdb' });
+        if (extIds.wikidata_id) links.push({ url: `https://www.wikidata.org/wiki/${extIds.wikidata_id}`, source: 'wikipedia' });
+        renderLinksInForm(links);
 
         // Render type fields first (to ensure inputs exist)
         const metaData = { year: meta.year };
