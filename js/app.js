@@ -487,7 +487,7 @@ function renderReviewList() {
                 <div class="reviews-header">
                     <h1>${typeName} (${reviews.length})</h1>
                     <div class="reviews-header-actions">
-                        ${isLoggedIn() && ['movie', 'tvshow', 'videogame', 'book'].includes(currentView) ? `<button class="btn btn-secondary btn-sm" id="bulkRefreshBtn" title="Refresh metadata from API for all ${typeName}">🔄 Refresh All</button>` : ''}
+                        ${isLoggedIn() && ['movie', 'movies', 'tvshow', 'tvshows', 'videogame', 'videogames', 'book', 'books'].includes(currentView) ? `<button class="btn btn-secondary btn-sm" id="bulkRefreshBtn" title="Refresh metadata from API for all ${typeName}">🔄 Refresh All</button>` : ''}
                         ${isLoggedIn() ? `<button class="btn btn-secondary btn-sm" id="bulkToggleBtn">${bulkMode ? 'Cancel' : 'Select'}</button>` : ''}
                         <input type="text" class="search-input" id="searchInput" 
                             placeholder="Search title, author, tag..." value="${escapeHtml(searchQuery)}">
@@ -610,7 +610,9 @@ function renderReviewList() {
     // Bulk refresh button
     const bulkRefreshBtn = document.getElementById('bulkRefreshBtn');
     if (bulkRefreshBtn) {
-        bulkRefreshBtn.addEventListener('click', () => startBulkRefresh(currentView, reviews));
+        const refreshTypeMap = { movies: 'movie', tvshows: 'tvshow', videogames: 'videogame', boardgames: 'boardgame', books: 'book' };
+        const refreshType = refreshTypeMap[currentView] || currentView;
+        bulkRefreshBtn.addEventListener('click', () => startBulkRefresh(refreshType, reviews));
     }
 
     // Bulk select all
