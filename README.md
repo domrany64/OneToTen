@@ -28,7 +28,7 @@ A personal media review website where you rate and review everything you play, r
 - **IMDb import tool** — Bulk import ratings from IMDb CSV export
 - **BGG import tool** — Bulk import board game collection from BoardGameGeek CSV export
 - **Playnite import tool** — Bulk import game library from Playnite CSV export
-- **Metadata auto-fetch** — Search TMDB (movies/TV), RAWG (games), or Open Library (books) by title; auto-fills year, director, actors, poster, and more
+- **Metadata auto-fetch** — Search TMDB (movies/TV), IGDB with GameBrain and RAWG fallbacks (games), or Open Library (books) by title
 - **Multi-user support** — Each account stores reviews separately; shared links work across users
 - **Bulk operations** — Select multiple reviews to bulk modify or delete
 - **Responsive** — Works on desktop, tablet, and mobile with adaptive sidebar layout
@@ -39,7 +39,43 @@ A personal media review website where you rate and review everything you play, r
 - **Database:** Firebase Realtime Database (modular SDK v12.15.0)
 - **Auth:** Firebase Email/Password Authentication
 - **Hosting:** GitHub Pages
+- **Game metadata proxy:** Cloudflare Workers
 - **CI:** GitHub Actions (weekly DB backup)
+
+## Game Search Worker Setup
+
+Video game search calls a Cloudflare Worker. The Worker tries IGDB first, then GameBrain, then RAWG. Provider credentials stay in Cloudflare Worker secrets; the browser only needs the public Worker URL.
+
+### 1. Create IGDB credentials
+
+Create a **Confidential** application in the [Twitch Developer Portal](https://dev.twitch.tv/console/apps), with two-factor authentication enabled. The Worker exchanges the client ID and secret for short-lived IGDB access tokens; do not put access tokens in the frontend or GitHub.
+
+### 2. Add provider credentials to Cloudflare
+
+From the repository root, run:
+
+```bash
+cd cloudflare/game-search-worker
+npx wrangler login
+npx wrangler secret put IGDB_CLIENT_ID
+npx wrangler secret put IGDB_CLIENT_SECRET
+npx wrangler secret put GAMEBRAIN_API_KEY
+npx wrangler secret put RAWG_API_KEY
+```
+
+Enter each value directly in the terminal prompt. GameBrain and RAWG keys are optional; the Worker skips providers without keys. GameBrain's free tier is non-commercial, allows 50 tokens/day, and requires a backlink; the app displays that backlink when GameBrain results appear.
+
+The RAWG key was previously included in frontend source. Treat it as exposed: rotate it at RAWG before adding the replacement as a Cloudflare secret.
+
+### 3. Deploy the Worker
+
+```bash
+npx wrangler deploy
+```
+
+Copy the `workers.dev` URL printed after deployment. In `js/app.js`, set `GAME_SEARCH_WORKER_URL` to that URL (no trailing slash), then publish the GitHub Pages change. Worker CORS allows the live OneToTen origin and local ports 8000; update `ALLOWED_ORIGINS` in `cloudflare/game-search-worker/wrangler.toml` if your site origin changes.
+
+The Worker caches successful searches briefly and restricts browser origins. CORS is not authentication; configure Cloudflare rate limiting for `/games/*` to protect provider quotas from direct scripted requests.
 
 ## Tools
 

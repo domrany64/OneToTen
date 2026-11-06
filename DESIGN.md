@@ -9,20 +9,23 @@ OneToTen is a single-page personal review app for tracking and rating media acro
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│              GitHub Pages (Static)           │
-│  ┌────────┐  ┌──────────┐  ┌────────────┐  │
-│  │  HTML  │  │   CSS    │  │  JS (ESM)  │  │
-│  └────────┘  └──────────┘  └─────┬──────┘  │
-│                                   │         │
-└───────────────────────────────────┼─────────┘
-                                    │ Firebase SDK (modular v12.15.0)
-                              ┌─────▼─────┐
-                              │  Firebase  │
-                              │ Realtime DB│
-                              │ + Auth     │
-                              └───────────┘
+    ┌────────────────────────────┐
+    │ GitHub Pages (Static App)  │
+    │ HTML · CSS · JS (ESM)      │
+    └─────────────┬──────────────┘
+          │
+       ┌──────────┴───────────┐
+       │                      │
+     Firebase SDK             Game search
+       │                      │
+   ┌───────▼────────┐   ┌─────────▼──────────┐
+   │ Firebase Auth  │   │ Cloudflare Worker  │
+   │ Realtime DB    │   │ IGDB → GameBrain   │
+   └────────────────┘   │       → RAWG        │
+        └────────────────────┘
 ```
+
+The Worker holds provider credentials as encrypted Cloudflare secrets and keeps them out of GitHub Pages source.
 
 ## Data Model
 
@@ -223,20 +226,24 @@ When adding a review, users can search by title to auto-fill metadata from exter
 |-----------|-----|-------------|
 | Movie | TMDB (The Movie Database) | Year, director, actors, studio, poster |
 | TV Show | TMDB | Year range, creator, actors, network, seasons, episodes, status, poster |
-| Video Game | RAWG | Year, developer, platform, cover image |
+| Video Game | IGDB → GameBrain → RAWG | Year, developer, platform, cover image |
 | Book | Open Library | Year, author, cover image |
 
 ### Flow
 1. User selects type and enters title
 2. Clicks 🔍 or presses Enter → searches the appropriate API
 3. Results shown in dropdown with thumbnail, title, year
-4. User selects a result → detailed API call fetches full metadata
+4. User selects a result → Worker-backed metadata fills available fields; RAWG details are fetched when needed
 5. Form fields auto-populate (user can still edit before saving)
 
-### API Keys
+### API Credentials
 - TMDB: Free tier, 1M requests/month
-- RAWG: Free tier, 20,000 requests/month
+- IGDB: Free for non-commercial usage under Twitch Developer terms; requires a Twitch application
+- GameBrain: Optional free non-commercial tier, 50 tokens/day; backlink required
+- RAWG: Last fallback; key stored as a Cloudflare Worker secret
 - Open Library: Free, no key required
+
+IGDB client ID and secret are stored in Cloudflare Worker secrets. The Worker obtains and refreshes IGDB access tokens; tokens and provider keys are never shipped to the browser. See README for deployment and secret setup.
 
 ---
 

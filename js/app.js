@@ -1491,9 +1491,9 @@ function updateReviewTextDirection() {
     }
 }
 
-// ===== Metadata Auto-Fetch (TMDB for movies/TV, RAWG for games, Open Library for books) =====
+// ===== Metadata Auto-Fetch (TMDB, game search Worker, Open Library) =====
 const TMDB_API_KEY = '0de3409b5270f98494b552581059ae03';
-const RAWG_API_KEY = 'e35ff8888fb44ea1a700bbf80f59ae5e';
+const GAME_SEARCH_WORKER_URL = '';
 
 const searchMetaBtn = document.getElementById('searchMetaBtn');
 const searchResultsContainer = document.getElementById('searchResults');
@@ -1650,7 +1650,7 @@ async function searchMetadata() {
         } else if (type === 'tvshow') {
             results = await searchTMDB(titleInput, 'tv', year);
         } else if (type === 'videogame') {
-            results = await searchRAWG(titleInput);
+            results = await searchGameCatalog(titleInput);
         } else if (type === 'book') {
             results = await searchGoogleBooks(titleInput);
         }
@@ -1668,6 +1668,10 @@ async function searchMetadata() {
             return;
         }
 
+        const gameBrainAttribution = results.some(r => r.meta.provider === 'gamebrain')
+            ? '<div style="padding:0.5rem 0.75rem;font-size:0.75rem;color:var(--text-muted)">Game data by <a href="https://gamebrain.co/" target="_blank" rel="noopener noreferrer">GameBrain</a></div>'
+            : '';
+
         searchResultsContainer.innerHTML = results.map((r, i) => `
             <div class="search-result-item" data-idx="${i}">
                 <img src="${escapeHtml(r.image || '')}" alt="" onerror="this.style.display='none'">
@@ -1676,7 +1680,7 @@ async function searchMetadata() {
                     <div class="sr-detail">${escapeHtml(r.detail)}</div>
                 </div>
             </div>
-        `).join('');
+        `).join('') + gameBrainAttribution;
 
         // Store results for selection
         searchResultsContainer._results = results;
@@ -1758,37 +1762,30 @@ async function fetchTMDBDetails(tmdbId, mediaType) {
     return await resp.json();
 }
 
-async function searchRAWG(query) {
-    const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=8`;
+async function requestGameSearch(path, params = {}) {
+    if (!GAME_SEARCH_WORKER_URL) {
+        throw new Error('Game search Worker URL is not configured. See README setup.');
+    }
+
+    const url = new URL(path, GAME_SEARCH_WORKER_URL);
+    for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value);
+    }
+
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error('RAWG request failed');
-    const data = await resp.json();
-
-    return (data.results || []).slice(0, 8).map(item => {
-        const year = (item.released || '').substring(0, 4);
-        const platforms = (item.platforms || []).map(p => p.platform.name).slice(0, 3).join(', ');
-
-        return {
-            title: item.name,
-            detail: [year, platforms].filter(Boolean).join(' · '),
-            image: item.background_image || '',
-            meta: {
-                year: year,
-                imageUrl: item.background_image || '',
-                developer: '', // RAWG doesn't return dev in search, will fill from detail if available
-                platform: platforms,
-                rawgId: item.id,
-                rawgSlug: item.slug
-            }
-        };
-    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || `Game search failed (${resp.status})`);
+    return data;
 }
 
-async function fetchRAWGDetails(rawgId) {
-    const url = `https://api.rawg.io/api/games/${rawgId}?key=${RAWG_API_KEY}`;
-    const resp = await fetch(url);
-    if (!resp.ok) return {};
-    return await resp.json();
+async function searchGameCatalog(query) {
+    const data = await requestGameSearch('/games/search', { q: query });
+    return data.results || [];
+}
+
+async function fetchGameDetails(provider, id) {
+    const data = await requestGameSearch('/games/details', { provider, id: String(id) });
+    return data.details || {};
 }
 
 async function searchGoogleBooks(query) {
@@ -1877,20 +1874,27 @@ async function applyMetadata(result, type) {
             document.getElementById('imageUrl').value = `https://image.tmdb.org/t/p/w500${details.poster_path}`;
         }
     } else if (type === 'videogame') {
-        // Fetch detailed info from RAWG
         showToast('Fetching details...');
-        const details = await fetchRAWGDetails(meta.rawgId);
+        let details = {};
+        if (meta.provider === 'rawg') {
+            try {
+                details = await fetchGameDetails(meta.provider, meta.rawgId);
+            } catch (e) {
+                console.warn('RAWG details unavailable; using search result metadata.', e);
+            }
+        }
 
         const metaData = {
-            year: meta.year,
-            platform: meta.platform,
-            developer: (details.developers || []).map(d => d.name).join(', ')
+            year: meta.year || details.year || '',
+            platform: meta.platform || details.platform || '',
+            developer: meta.developer || details.developer || ''
         };
 
         renderTypeFields(type, metaData);
 
-        if (details.background_image) {
-            document.getElementById('imageUrl').value = details.background_image;
+        const imageUrl = details.imageUrl || meta.imageUrl;
+        if (imageUrl) {
+            document.getElementById('imageUrl').value = imageUrl;
         }
     } else if (type === 'book') {
         const metaData = {
@@ -2127,25 +2131,31 @@ async function refreshSingleReview(review, type) {
         return 'updated';
 
     } else if (type === 'videogame') {
-        const results = await searchRAWG(review.title);
+        const results = await searchGameCatalog(review.title);
         const match = results.find(r => r.title.toLowerCase() === review.title.toLowerCase()) || results[0];
         if (!match) return 'not-found';
 
-        details = await fetchRAWGDetails(match.meta.rawgId);
-        if (!details || !details.id) return 'not-found';
+        let gameDetails = {};
+        if (match.meta.provider === 'rawg') {
+            try {
+                gameDetails = await fetchGameDetails(match.meta.provider, match.meta.rawgId);
+            } catch (e) {
+                console.warn('RAWG details unavailable during bulk refresh.', e);
+            }
+        }
 
         const updates = {};
         const newMeta = { ...meta };
 
-        if (!review.imageUrl && details.background_image) {
-            updates.imageUrl = details.background_image;
+        if (!review.imageUrl && (gameDetails.imageUrl || match.meta.imageUrl)) {
+            updates.imageUrl = gameDetails.imageUrl || match.meta.imageUrl;
         }
         if (!newMeta.developer) {
-            const dev = (details.developers || []).map(d => d.name).join(', ');
+            const dev = gameDetails.developer || match.meta.developer;
             if (dev) newMeta.developer = dev;
         }
-        if (!newMeta.year && match.meta.year) newMeta.year = match.meta.year;
-        if (!newMeta.platform && match.meta.platform) newMeta.platform = match.meta.platform;
+        if (!newMeta.year && (gameDetails.year || match.meta.year)) newMeta.year = gameDetails.year || match.meta.year;
+        if (!newMeta.platform && (gameDetails.platform || match.meta.platform)) newMeta.platform = gameDetails.platform || match.meta.platform;
 
         if (JSON.stringify(newMeta) !== JSON.stringify(meta)) updates.meta = newMeta;
         if (Object.keys(updates).length === 0) return 'skipped';
