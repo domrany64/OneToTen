@@ -1493,7 +1493,7 @@ function updateReviewTextDirection() {
 
 // ===== Metadata Auto-Fetch (TMDB, game search Worker, Open Library) =====
 const TMDB_API_KEY = '0de3409b5270f98494b552581059ae03';
-const GAME_SEARCH_WORKER_URL = '';
+const GAME_SEARCH_WORKER_URL = 'https://onetoten-game-search.ontoten.workers.dev';
 
 const searchMetaBtn = document.getElementById('searchMetaBtn');
 const searchResultsContainer = document.getElementById('searchResults');
